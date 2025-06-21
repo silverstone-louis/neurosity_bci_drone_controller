@@ -697,8 +697,8 @@
         }
         
         function updateDualPredictions(data) {
-            if (data['3_class']) { // Backend still sends it as '3_class' key
-                update4ClassPredictions(data['3_class']);
+            if (data['4_class']) 
+                update4ClassPredictions(data['4_class']);
             }
             if (data['8_class']) {
                 update8ClassPredictions(data['8_class']);
