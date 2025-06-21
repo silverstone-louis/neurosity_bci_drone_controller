@@ -38,14 +38,14 @@ echo ------------------------------------------------------------
 REM Start drone controller in new window
 echo.
 echo 1. Starting Drone Controller (Python 2.7)...
-start "Drone Controller" cmd /k "conda activate tello_py27 && python C:\Users\silve\Tello-Python\neurosity_tello\neurosity_tello_third_draft\drone_controller.py %DRONE_MODE%"
+start "Drone Controller" cmd /k "conda activate tello_py27 && python C:\Users\silve\Tello-Python\neurosity_tello\neurosity_tello_fourth_draft\drone_controller.py %DRONE_MODE%"
 
 REM Wait a bit
 timeout /t 3 /nobreak > nul
 
 REM Start BCI bridge in new window
 echo 2. Starting Dual Model BCI Bridge (Python 3)...
-start "BCI Bridge" cmd /k "F:\huggingface_transformers_course\transformers_env\python.exe C:\Users\silve\Tello-Python\neurosity_tello\neurosity_tello_third_draft\neurosity_bci_bridge.py"
+start "BCI Bridge" cmd /k "F:\huggingface_transformers_course\transformers_env\python.exe C:\Users\silve\Tello-Python\neurosity_tello\neurosity_tello_fourth_draft\neurosity_bci_bridge.py"
 
 REM Wait for server to start
 echo 3. Waiting for web server...
