@@ -1,5 +1,6 @@
 # neurosity_bci_bridge.py
 # Simplified BCI bridge with heading-based rotation control
+# REVISED: Added proper state handling and manual override
 
 import os
 import sys
@@ -67,6 +68,9 @@ udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 # Command timing
 last_push_command_time = 0
 last_rotation_command_time = 0
+
+# Manual override flag
+manual_override_active = False
 
 def load_dotenv_config():
     logger.info(f"Loading .env from: {ENV_PATH}")
@@ -216,7 +220,6 @@ def process_eeg_data(brainwave_data):
                     logger.info(f">>> {command_to_send.upper()} triggered by Push thought <<<")
                 
                 # Update heading controller with 4-class predictions
-                # NOTE: The model manager stores it as '4_class' even though it has 4 classes
                 prediction_4_class = dual_predictions.get('4_class')
                 if prediction_4_class and heading_controller:
                     heading_controller.update_prediction(prediction_4_class)
@@ -241,7 +244,7 @@ def rotation_command_thread():
     Thread that sends rotation commands at regular intervals.
     Only sends commands when drone is flying.
     """
-    global heading_controller, command_mapper, last_rotation_command_time
+    global heading_controller, command_mapper, last_rotation_command_time, manual_override_active
     
     # Wait for initialization
     while not all([heading_controller, command_mapper]):
@@ -258,6 +261,16 @@ def rotation_command_thread():
             drone_state = command_mapper.get_state_info()['drone_state']
             is_flying = drone_state == 'flying'
             
+            # Also check manual override
+            if manual_override_active:
+                is_flying = True
+                
+            # Log state periodically for debugging
+            if current_time - last_log_time > 5.0:
+                logger.info(f"Rotation thread: drone_state={drone_state}, is_flying={is_flying}, "
+                           f"manual_override={manual_override_active}")
+                last_log_time = current_time
+            
             # Check if it's time to potentially send a command
             if heading_controller.should_send_command(current_time, last_rotation_command_time):
                 if is_flying and heading_controller.enabled:
@@ -270,10 +283,6 @@ def rotation_command_thread():
                         last_rotation_command_time = current_time
                     else:
                         # In dead zone - no command sent
-                        # Log this occasionally so we know it's working
-                        if current_time - last_log_time > 2.0:
-                            logger.debug("In dead zone - no rotation command sent")
-                            last_log_time = current_time
                         last_rotation_command_time = current_time
                 else:
                     # Not flying - don't send commands but update timer
@@ -344,13 +353,44 @@ def send_command():
 
 @app.route('/update_drone_state', methods=['POST'])
 def update_drone_state():
+    """Handle drone state updates from the drone controller"""
     data = request.json
     command = data.get('command')
     success = data.get('success', True)
+    
+    logger.info(f"Received drone state update: command={command}, success={success}")
+    
     if command and command_mapper:
         command_mapper.handle_command_completion(command, success)
+        
+        # Emit updated state to dashboard
+        mapper_state = command_mapper.get_state_info()
+        socketio.emit('system_update', {
+            "mapper_state": mapper_state,
+            "command_completion": {
+                "command": command,
+                "success": success
+            }
+        })
+        
         return jsonify({"success": True})
     return jsonify({"success": False})
+
+@app.route('/toggle_manual_override', methods=['POST'])
+def toggle_manual_override():
+    """Toggle manual override for testing heading control without takeoff"""
+    global manual_override_active
+    manual_override_active = not manual_override_active
+    logger.info(f"Manual override {'ENABLED' if manual_override_active else 'DISABLED'}")
+    
+    socketio.emit('manual_override_status', {
+        "active": manual_override_active
+    })
+    
+    return jsonify({
+        "success": True,
+        "manual_override": manual_override_active
+    })
 
 # WebSocket Events
 @socketio.on('connect')
@@ -367,7 +407,8 @@ def emit_status():
     status = {
         'neurosity_connected': neurosity is not None,
         'models_loaded': model_manager is not None,
-        'heading_control_enabled': HEADING_CONTROL["enabled"]
+        'heading_control_enabled': HEADING_CONTROL["enabled"],
+        'manual_override': manual_override_active
     }
     if model_manager:
         status['model_info'] = model_manager.get_model_info()
@@ -412,7 +453,8 @@ if __name__ == "__main__":
     
     print(f"\n>>> Dashboard URL: http://{WEB_CONFIG['host']}:{WEB_CONFIG['port']}/ <<<")
     print(">>> Commands: Push = Takeoff/Land, Left/Right Fist = Rotation <<<")
-    print(f">>> Rotation commands sent every {HEADING_CONTROL['command_interval']}s when flying <<<\n")
+    print(f">>> Rotation commands sent every {HEADING_CONTROL['command_interval']}s when flying <<<")
+    print(">>> NEW: Manual override available for testing rotation without takeoff <<<\n")
     
     try:
         socketio.run(app, host=WEB_CONFIG['host'], port=WEB_CONFIG['port'], debug=WEB_CONFIG['debug'])
