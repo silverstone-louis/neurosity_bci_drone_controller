@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 drone_controller.py - Tello Drone Controller
-Updated to handle heading-based rotation commands.
+Updated to handle heading-based rotation commands and send completion feedback.
 NOTE: This script is intended for Python 2.7.
 """
 
@@ -14,6 +14,8 @@ import logging
 import threading
 import sys
 import os
+import urllib2
+import urllib
 
 # Configuration
 UDP_IP = "127.0.0.1"
@@ -21,6 +23,9 @@ UDP_PORT = 9999
 COMMAND_INTERVAL = 0.5 # For discrete commands
 BUFFER_SIZE = 1024
 TEST_MODE = False
+
+# BCI Bridge callback URL
+BCI_BRIDGE_URL = "http://127.0.0.1:5001/update_drone_state"
 
 # Logging setup
 logging.basicConfig(
@@ -94,6 +99,30 @@ class DroneController(object):
             logger.error("Failed to setup UDP: %s", str(e))
             return False
 
+    def send_completion_callback(self, command, success):
+        """Send completion notification back to BCI bridge"""
+        try:
+            data = json.dumps({
+                "command": command,
+                "success": success,
+                "timestamp": int(time.time() * 1000)
+            })
+            
+            req = urllib2.Request(BCI_BRIDGE_URL, 
+                                data=data,
+                                headers={'Content-Type': 'application/json'})
+            
+            response = urllib2.urlopen(req, timeout=2)
+            result = json.loads(response.read())
+            
+            if result.get("success"):
+                logger.info("Sent completion callback for %s (success=%s)", command, success)
+            else:
+                logger.warning("Completion callback failed for %s", command)
+                
+        except Exception as e:
+            logger.error("Failed to send completion callback: %s", str(e))
+
     def can_send_command(self):
         """Check if enough time has passed for discrete commands"""
         return (time.time() - self.last_command_time) >= COMMAND_INTERVAL
@@ -117,6 +146,13 @@ class DroneController(object):
                     self.is_flying = True
                     success = True
                     logger.info(">>> DRONE STATUS: TAKING OFF <<<")
+                    
+                    # Send completion callback after a delay (simulate takeoff time)
+                    def delayed_callback():
+                        time.sleep(3.0 if not self.test_mode else 0.5)
+                        self.send_completion_callback("takeoff", True)
+                    
+                    threading.Thread(target=delayed_callback).start()
             else:
                 logger.warning("Already flying, ignoring takeoff")
                 
@@ -127,6 +163,13 @@ class DroneController(object):
                     self.is_flying = False
                     success = True
                     logger.info(">>> DRONE STATUS: LANDING <<<")
+                    
+                    # Send completion callback after a delay
+                    def delayed_callback():
+                        time.sleep(2.0 if not self.test_mode else 0.5)
+                        self.send_completion_callback("land", True)
+                    
+                    threading.Thread(target=delayed_callback).start()
             else:
                 logger.warning("Not flying, ignoring land")
 
@@ -139,6 +182,7 @@ class DroneController(object):
                 success = True
                 self.rotation_angle = (self.rotation_angle + rotation_degrees) % 360
                 logger.info("Rotated RIGHT %d degrees (heading control)", rotation_degrees)
+                # No completion callback for rotation commands - they're immediate
                 
         elif command == "ccw" and self.is_flying:
             # Counter-clockwise rotation with specified degrees
@@ -148,6 +192,7 @@ class DroneController(object):
                 success = True
                 self.rotation_angle = (self.rotation_angle - rotation_degrees) % 360
                 logger.info("Rotated LEFT %d degrees (heading control)", rotation_degrees)
+                # No completion callback for rotation commands - they're immediate
 
         # Legacy rotation commands (for manual control)
         elif command == "rotate_left" and self.is_flying:
@@ -245,7 +290,7 @@ class DroneController(object):
     def run(self):
         """Main run method"""
         print("=" * 60)
-        print("DRONE CONTROLLER - HEADING CONTROL MODE")
+        print("DRONE CONTROLLER - HEADING CONTROL MODE WITH FEEDBACK")
         print("=" * 60)
         
         if not self.initialize_drone() or not self.setup_udp_receiver():
@@ -258,6 +303,7 @@ class DroneController(object):
         print("\nDrone controller ready!")
         print("Waiting for commands on %s:%d" % (UDP_IP, UDP_PORT))
         print("Accepts heading-based rotation commands (cw/ccw with degrees)")
+        print("Sends completion callbacks to %s" % BCI_BRIDGE_URL)
         print("\nPress Ctrl+C to stop\n")
         
         try:
