@@ -1,5 +1,5 @@
 # model_manager.py
-# Manages loading and inference for both 3-class and 8-class models
+# Manages loading and inference for both 4-class and 8-class models
 
 import os
 import numpy as np
