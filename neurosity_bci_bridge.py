@@ -1,6 +1,6 @@
 # neurosity_bci_bridge.py
-# Simplified BCI bridge with heading-based rotation control
-# REVISED: Added proper state handling and manual override
+# Simplified BCI bridge with heading-based rotation control and video relay
+# REVISED: Added video frame reception and WebSocket relay
 
 import os
 import sys
@@ -10,6 +10,7 @@ if not hasattr(np,'_core'):
     np.core = np.core
 import socket
 import json
+import base64
 from dotenv import load_dotenv
 from neurosity import NeurositySDK
 import logging
@@ -71,6 +72,16 @@ last_rotation_command_time = 0
 
 # Manual override flag
 manual_override_active = False
+
+# Video state
+video_frame_buffer = deque(maxlen=3)  # Small buffer to smooth playback
+video_stats = {
+    'frames_received': 0,
+    'frames_sent': 0,
+    'last_fps': 0,
+    'last_frame_time': 0
+}
+video_relay_lock = Lock()
 
 def load_dotenv_config():
     logger.info(f"Loading .env from: {ENV_PATH}")
@@ -295,6 +306,44 @@ def rotation_command_thread():
             logger.error(f"Error in rotation command thread: {e}")
             time.sleep(1)
 
+def video_relay_thread():
+    """
+    Thread that relays video frames from the buffer to connected clients
+    """
+    logger.info("Video relay thread started")
+    last_emit_time = 0
+    min_emit_interval = 1.0 / 30  # Max 30 FPS to browser
+    
+    while True:
+        try:
+            current_time = time.time()
+            
+            # Rate limit emissions
+            if (current_time - last_emit_time) < min_emit_interval:
+                time.sleep(0.01)
+                continue
+            
+            # Check if we have frames
+            with video_relay_lock:
+                if video_frame_buffer:
+                    frame_data = video_frame_buffer[-1]  # Get most recent
+                    video_stats['frames_sent'] += 1
+                    
+                    # Emit to all connected clients
+                    socketio.emit('video_frame', frame_data)
+                    last_emit_time = current_time
+                    
+                    # Log stats periodically
+                    if video_stats['frames_sent'] % 100 == 0:
+                        logger.info(f"Video relay: {video_stats['frames_sent']} frames sent, "
+                                   f"FPS: {video_stats['last_fps']:.1f}")
+            
+            time.sleep(0.01)
+            
+        except Exception as e:
+            logger.error(f"Error in video relay thread: {e}")
+            time.sleep(1)
+
 def neurosity_stream_runner():
     """Background thread for Neurosity streaming"""
     global raw_unsubscribe, neurosity
@@ -376,6 +425,45 @@ def update_drone_state():
         return jsonify({"success": True})
     return jsonify({"success": False})
 
+@app.route('/video_frame', methods=['POST'])
+def receive_video_frame():
+    """Receive video frame from drone controller"""
+    try:
+        data = request.json
+        
+        # Extract frame data
+        frame_b64 = data.get('frame')
+        timestamp = data.get('timestamp')
+        fps = data.get('fps', 0)
+        frame_count = data.get('frame_count', 0)
+        
+        if not frame_b64:
+            return jsonify({"success": False, "error": "No frame data"})
+        
+        # Update stats
+        with video_relay_lock:
+            video_stats['frames_received'] += 1
+            video_stats['last_fps'] = fps
+            video_stats['last_frame_time'] = time.time()
+            
+            # Add to buffer (already base64 encoded)
+            video_frame_buffer.append({
+                'frame': frame_b64,
+                'timestamp': timestamp,
+                'fps': fps,
+                'frame_count': frame_count
+            })
+        
+        # Log periodically
+        if video_stats['frames_received'] % 100 == 0:
+            logger.info(f"Video frames received: {video_stats['frames_received']}")
+        
+        return jsonify({"success": True})
+        
+    except Exception as e:
+        logger.error(f"Error receiving video frame: {e}")
+        return jsonify({"success": False, "error": str(e)})
+
 @app.route('/toggle_manual_override', methods=['POST'])
 def toggle_manual_override():
     """Toggle manual override for testing heading control without takeoff"""
@@ -408,7 +496,8 @@ def emit_status():
         'neurosity_connected': neurosity is not None,
         'models_loaded': model_manager is not None,
         'heading_control_enabled': HEADING_CONTROL["enabled"],
-        'manual_override': manual_override_active
+        'manual_override': manual_override_active,
+        'video_stats': video_stats.copy()
     }
     if model_manager:
         status['model_info'] = model_manager.get_model_info()
@@ -422,7 +511,7 @@ def emit_status():
 # Main execution
 if __name__ == "__main__":
     print("\n" + "="*60)
-    print("NEUROSITY BCI DRONE CONTROL - SIMPLIFIED")
+    print("NEUROSITY BCI DRONE CONTROL - WITH VIDEO RELAY")
     print("="*60 + "\n")
     
     load_dotenv_config()
@@ -450,11 +539,12 @@ if __name__ == "__main__":
     # Start background threads
     Thread(target=neurosity_stream_runner, daemon=True).start()
     Thread(target=rotation_command_thread, daemon=True).start()
+    Thread(target=video_relay_thread, daemon=True).start()
     
     print(f"\n>>> Dashboard URL: http://{WEB_CONFIG['host']}:{WEB_CONFIG['port']}/ <<<")
     print(">>> Commands: Push = Takeoff/Land, Left/Right Fist = Rotation <<<")
     print(f">>> Rotation commands sent every {HEADING_CONTROL['command_interval']}s when flying <<<")
-    print(">>> NEW: Manual override available for testing rotation without takeoff <<<\n")
+    print(">>> NEW: Video streaming support enabled <<<\n")
     
     try:
         socketio.run(app, host=WEB_CONFIG['host'], port=WEB_CONFIG['port'], debug=WEB_CONFIG['debug'])
