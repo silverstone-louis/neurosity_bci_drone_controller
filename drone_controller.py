@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-drone_controller.py - Tello Drone Controller
-Updated to handle heading-based rotation commands and send completion feedback.
+drone_controller.py - Tello Drone Controller with Video Support
+Updated to handle heading-based rotation commands, completion feedback, and video streaming.
 NOTE: This script is intended for Python 2.7.
 """
 
@@ -16,6 +16,15 @@ import sys
 import os
 import urllib2
 import urllib
+import base64
+
+# Import video module
+try:
+    from tello_video import TelloVideo
+    VIDEO_AVAILABLE = True
+except ImportError:
+    print("Warning: tello_video module not found - video disabled")
+    VIDEO_AVAILABLE = False
 
 # Configuration
 UDP_IP = "127.0.0.1"
@@ -24,8 +33,14 @@ COMMAND_INTERVAL = 0.5 # For discrete commands
 BUFFER_SIZE = 1024
 TEST_MODE = False
 
-# BCI Bridge callback URL
+# BCI Bridge URLs
 BCI_BRIDGE_URL = "http://127.0.0.1:5001/update_drone_state"
+VIDEO_FRAME_URL = "http://127.0.0.1:5001/video_frame"
+
+# Video Configuration
+VIDEO_ENABLED = True
+VIDEO_FPS_LIMIT = 15  # Max FPS to send to bridge
+VIDEO_QUALITY = 70    # JPEG quality (1-100)
 
 # Logging setup
 logging.basicConfig(
@@ -52,6 +67,7 @@ class DroneController(object):
     def __init__(self, test_mode=True):
         self.test_mode = test_mode
         self.tello = None
+        self.video_handler = None
         self.is_flying = False
         self.last_command_time = 0
         self.running = True
@@ -59,6 +75,12 @@ class DroneController(object):
         self.command_count = 0
         self.start_time = time.time()
         self.rotation_angle = 0
+        
+        # Video state
+        self.video_enabled = VIDEO_ENABLED and VIDEO_AVAILABLE and not test_mode
+        self.video_thread = None
+        self.last_video_frame_time = 0
+        self.video_frame_interval = 1.0 / VIDEO_FPS_LIMIT
 
     def initialize_drone(self):
         """Initialize Tello drone"""
@@ -78,6 +100,10 @@ class DroneController(object):
                 logger.info("Checking battery...")
                 battery = self.tello.send_command("battery?")
                 logger.info("Battery level: %s", battery)
+                
+                # Initialize video if enabled
+                if self.video_enabled:
+                    self.initialize_video()
             else:
                 logger.info("TEST MODE: Skipping SDK initialization")
             
@@ -86,6 +112,104 @@ class DroneController(object):
         except Exception as e:
             logger.error("Failed to initialize Tello: %s", str(e))
             return False
+    
+    def initialize_video(self):
+        """Initialize video handler"""
+        if not self.video_enabled:
+            return
+            
+        try:
+            logger.info("Initializing video handler...")
+            self.video_handler = TelloVideo()
+            
+            # Start video with Tello's command socket
+            if self.video_handler.start_video(self.tello.socket):
+                logger.info("Video handler started")
+                
+                # Wait for first frame
+                if self.video_handler.wait_for_frame(timeout=5.0):
+                    logger.info("Video stream active!")
+                    
+                    # Start video forwarding thread
+                    self.video_thread = threading.Thread(target=self._video_forward_thread)
+                    self.video_thread.daemon = True
+                    self.video_thread.start()
+                else:
+                    logger.warning("No video frames received")
+                    self.video_enabled = False
+            else:
+                logger.error("Failed to start video handler")
+                self.video_enabled = False
+                
+        except Exception as e:
+            logger.error("Video initialization error: %s", e)
+            self.video_enabled = False
+    
+    def _video_forward_thread(self):
+        """Thread that forwards video frames to BCI bridge"""
+        logger.info("Video forwarding thread started")
+        frame_count = 0
+        
+        while self.running and self.video_enabled:
+            try:
+                current_time = time.time()
+                
+                # Rate limit video frames
+                if (current_time - self.last_video_frame_time) < self.video_frame_interval:
+                    time.sleep(0.01)
+                    continue
+                
+                # Get frame data
+                frame_data = self.video_handler.get_frame_with_stats()
+                if frame_data['frame'] is None:
+                    time.sleep(0.1)
+                    continue
+                
+                # Convert to JPEG
+                jpeg_data = self.video_handler.convert_to_jpeg(
+                    frame_data['frame'], 
+                    quality=VIDEO_QUALITY
+                )
+                
+                if jpeg_data:
+                    # Send to BCI bridge
+                    self.send_video_frame(jpeg_data, frame_data)
+                    frame_count += 1
+                    self.last_video_frame_time = current_time
+                    
+                    if frame_count % 100 == 0:
+                        logger.info("Sent %d video frames (FPS: %.1f)", 
+                                   frame_count, frame_data['fps'])
+                
+            except Exception as e:
+                logger.error("Video forward error: %s", e)
+                time.sleep(1)
+        
+        logger.info("Video forwarding thread stopped")
+    
+    def send_video_frame(self, jpeg_data, frame_info):
+        """Send video frame to BCI bridge"""
+        try:
+            # Prepare frame data
+            data = json.dumps({
+                'frame': base64.b64encode(jpeg_data),
+                'timestamp': int(time.time() * 1000),
+                'fps': frame_info['fps'],
+                'frame_count': frame_info['frame_count']
+            })
+            
+            # Send via HTTP POST
+            req = urllib2.Request(VIDEO_FRAME_URL,
+                                data=data,
+                                headers={'Content-Type': 'application/json'})
+            
+            # Quick timeout to avoid blocking
+            response = urllib2.urlopen(req, timeout=0.5)
+            
+        except Exception as e:
+            # Don't log every frame error to avoid spam
+            if self.command_count % 100 == 0:
+                logger.warning("Failed to send video frame: %s", e)
     
     def setup_udp_receiver(self):
         """Setup UDP socket to receive commands"""
@@ -182,7 +306,6 @@ class DroneController(object):
                 success = True
                 self.rotation_angle = (self.rotation_angle + rotation_degrees) % 360
                 logger.info("Rotated RIGHT %d degrees (heading control)", rotation_degrees)
-                # No completion callback for rotation commands - they're immediate
                 
         elif command == "ccw" and self.is_flying:
             # Counter-clockwise rotation with specified degrees
@@ -192,7 +315,6 @@ class DroneController(object):
                 success = True
                 self.rotation_angle = (self.rotation_angle - rotation_degrees) % 360
                 logger.info("Rotated LEFT %d degrees (heading control)", rotation_degrees)
-                # No completion callback for rotation commands - they're immediate
 
         # Legacy rotation commands (for manual control)
         elif command == "rotate_left" and self.is_flying:
@@ -245,6 +367,13 @@ class DroneController(object):
         logger.info("Rotation: %d degrees", self.rotation_angle)
         logger.info("Commands received: %d", self.command_count)
         logger.info("Test mode: %s", self.test_mode)
+        logger.info("Video enabled: %s", self.video_enabled)
+        
+        if self.video_handler and self.video_enabled:
+            stats = self.video_handler.get_frame_with_stats()
+            logger.info("Video frames: %d (FPS: %.1f)", 
+                       stats['frame_count'], stats['fps'])
+        
         if not self.test_mode and self.tello:
             try:
                 battery = self.tello.send_command("battery?")
@@ -260,7 +389,7 @@ class DroneController(object):
         while self.running:
             try:
                 data, addr = self.udp_socket.recvfrom(BUFFER_SIZE)
-                command_string = data.strip() # Remove leading/trailing whitespace
+                command_string = data.strip()
 
                 # Parse JSON command
                 try:
@@ -287,11 +416,31 @@ class DroneController(object):
                 except: pass
             self.is_flying = False
     
+    def cleanup(self):
+        """Clean up resources"""
+        logger.info("Cleaning up...")
+        
+        # Stop video
+        if self.video_handler:
+            try:
+                self.video_handler.stop_video()
+            except:
+                pass
+        
+        # Close sockets
+        if self.udp_socket:
+            try:
+                self.udp_socket.close()
+            except:
+                pass
+    
     def run(self):
         """Main run method"""
         print("=" * 60)
-        print("DRONE CONTROLLER - HEADING CONTROL MODE WITH FEEDBACK")
+        print("DRONE CONTROLLER - WITH VIDEO SUPPORT")
         print("=" * 60)
+        print("Video enabled: %s" % self.video_enabled)
+        print("")
         
         if not self.initialize_drone() or not self.setup_udp_receiver():
             return 1
@@ -304,6 +453,8 @@ class DroneController(object):
         print("Waiting for commands on %s:%d" % (UDP_IP, UDP_PORT))
         print("Accepts heading-based rotation commands (cw/ccw with degrees)")
         print("Sends completion callbacks to %s" % BCI_BRIDGE_URL)
+        if self.video_enabled:
+            print("Streaming video to %s" % VIDEO_FRAME_URL)
         print("\nPress Ctrl+C to stop\n")
         
         try:
@@ -315,8 +466,7 @@ class DroneController(object):
             logger.info("Shutting down...")
             self.running = False
             self.emergency_land()
-            if self.udp_socket:
-                self.udp_socket.close()
+            self.cleanup()
             if hasattr(self, 'receive_thread') and self.receive_thread.is_alive():
                 self.receive_thread.join(timeout=1)
             self.print_status()
