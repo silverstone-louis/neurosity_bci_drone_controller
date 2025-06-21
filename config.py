@@ -1,198 +1,114 @@
 # config.py
-# Centralized configuration for dual-model BCI drone control
+# Simplified configuration for heading-based control
 
 import os
 
 # Model paths
 MODELS = {
-    "3_class": {
+    "4_class": {  # Actually 4 classes but keeping the key for compatibility
         "model_path": r"C:\Users\silve\Tello-Python\neurosity_tello\optuna_hyperparameter_xgboost2\4_class_eeg_xgb_model_optuna_20250619_190434.json",
         "scaler_path": r"C:\Users\silve\Tello-Python\neurosity_tello\optuna_hyperparameter_xgboost2\4_class_eeg_scaler_optuna_20250619_190434.pkl",
         "num_classes": 4,
         "class_names": ["Rest", "Left_Fist", "Right_Fist", "Both_Fists"],
-        "features": "covariance"  # Type of features this model expects
+        "features": "covariance"
     },
     "8_class": {
         "model_path": r"F:\neurosity_final\training_pipeline\kinesis_xgboost_model_softprob.json",
         "scaler_path": r"F:\neurosity_final\training_pipeline\kinesis_scaler.pkl",
         "num_classes": 8,
-        # Update class names to match the model trained for Pong
         "class_names": ["Unknown_Disappear34", "Left_Foot", "Left_Arm", "Push", "Tongue", "Disappear22", "Rest", "Jumping_Jacks"],
-        "features": "covariance" # Change from "raw" to "covariance"
+        "features": "covariance"
     }
 }
 
-# Per-class confidence thresholds
-# These can be tuned based on model performance for each specific class
+# Confidence thresholds - SIMPLIFIED
 CONFIDENCE_THRESHOLDS = {
-    # 3-class model thresholds
-    "Rest": 0.35,          # Lower threshold for rest state
-    "Left_Fist": 0.4,     # Higher threshold for active commands
-    "Right_Fist": 0.4,
-    "Both_Fists": 0.4,   # Threshold for continuous control
+    # For heading control (not used directly anymore)
+    "Left_Fist": 0.3,
+    "Right_Fist": 0.3,
+    "Both_Fists": 0.3,
     
-    # 8-class model thresholds
-    "Push": 0.6,         # High threshold for takeoff/land
-    "Pull": 0.7,          # Future commands
-    "Lift": 0.7,
-    "Drop": 0.7,
-    "Left": 0.65,         # Slightly lower for directional
-    "Right": 0.65,
-    "Tongue": 0.7,
-    "Feet": 0.8           # Highest threshold for emergency
+    # For Push command
+    "Push": 0.6,  # Takeoff/land threshold
 }
 
-# Sustained command durations (seconds)
-# Different commands need different hold times
-SUSTAINED_DURATIONS = {
-    # 3-class model
-    "Left_Fist": 0.5,     # Rotation commands need less hold time
-    "Right_Fist": 0.5,
-    "Both_Fists": 0.0,    # No sustained duration needed for continuous mode
-    
-    # 8-class model
-    "Push": 1.0,          # Takeoff/land need longer confirmation
-    "Pull": 1.0,          # Future movement commands
-    "Lift": 1.0,
-    "Drop": 1.0,
-    "Left": 1.0,
-    "Right": 1.0,
-    "Tongue": 1.0,
-    "Feet": 0.5           # Emergency should be fast
-}
-PUSH_COMMAND_COOLDOWN = 3.0  # Special cooldown for Push command
+# Push command cooldown
+PUSH_COMMAND_COOLDOWN = 3.0
 
-# Command mappings
+# SIMPLIFIED Command mappings (most handled by heading controller now)
 COMMAND_MAPPINGS = {
-    # 3-class model - Active mappings
-    "Left_Fist": {
-        "drone_command": "rotate_left",
-        "enabled": True,
-        "description": "Rotate counter-clockwise 45 degrees"
-    },
-    "Right_Fist": {
-        "drone_command": "rotate_right", 
-        "enabled": True,
-        "description": "Rotate clockwise 45 degrees"
-    },
-    
-    # 8-class model - Active mappings
+    # Push is the only discrete command we use
     "Push": {
-        "drone_command": "toggle_flight",  # Special: takeoff or land
+        "drone_command": "toggle_flight",
         "enabled": True,
         "description": "Takeoff if grounded, Land if flying"
     },
     
-    # 8-class model - Future mappings (disabled for now)
-    "Pull": {
-        "drone_command": "back",
-        "enabled": False,
-        "description": "Move backward 50cm"
-    },
-    "Lift": {
-        "drone_command": "up",
-        "enabled": False,
-        "description": "Ascend 50cm"
-    },
-    "Drop": {
-        "drone_command": "down",
-        "enabled": False,
-        "description": "Descend 50cm"
-    },
-    "Left": {
-        "drone_command": "left",
-        "enabled": False,
-        "description": "Strafe left 50cm"
-    },
-    "Right": {
-        "drone_command": "right",
-        "enabled": False,
-        "description": "Strafe right 50cm"
-    },
-    "Tongue": {
-        "drone_command": "forward",
-        "enabled": False,
-        "description": "Move forward 50cm"
-    },
-    "Feet": {
-        "drone_command": "emergency",
-        "enabled": False,
-        "description": "Emergency stop"
-    }
+    # These are disabled - handled by heading controller
+    "Left_Fist": {"drone_command": "rotate_left", "enabled": False, "description": "Handled by heading control"},
+    "Right_Fist": {"drone_command": "rotate_right", "enabled": False, "description": "Handled by heading control"},
+    
+    # Future commands (all disabled)
+    "Pull": {"drone_command": "back", "enabled": False, "description": "Move backward 50cm"},
+    "Lift": {"drone_command": "up", "enabled": False, "description": "Ascend 50cm"},
+    "Drop": {"drone_command": "down", "enabled": False, "description": "Descend 50cm"},
 }
 
-# Command priority (higher number = higher priority)
-# Used for conflict resolution when multiple commands are detected
-COMMAND_PRIORITY = {
-    "emergency": 100,      # Always highest priority
-    "land": 90,           # Safety commands high priority
-    "toggle_flight": 80,  # Takeoff/land
-    "forward": 50,        # Movement commands medium priority
-    "back": 50,
-    "up": 50,
-    "down": 50,
-    "left": 50,
-    "right": 50,
-    "rotate_left": 40,    # Rotation lower priority
-    "rotate_right": 40,
-    "status": 10          # Info commands lowest
-}
-
-# State-based command restrictions
-# Commands that cannot be executed in certain states
+# Command restrictions by drone state
 COMMAND_RESTRICTIONS = {
-    "grounded": [
-        "forward", "back", "left", "right", "up", "down", 
-        "rotate_left", "rotate_right"
-    ],
-    "flying": [
-        # All commands allowed when flying
-    ],
-    "taking_off": [
-        # Block all commands during takeoff
-        "forward", "back", "left", "right", "up", "down",
-        "rotate_left", "rotate_right", "land"
-    ],
-    "landing": [
-        # Block all commands during landing
-        "forward", "back", "left", "right", "up", "down",
-        "rotate_left", "rotate_right", "takeoff"
-    ]
+    "grounded": ["forward", "back", "left", "right", "up", "down", "rotate_left", "rotate_right", "cw", "ccw"],
+    "taking_off": ["forward", "back", "left", "right", "up", "down", "rotate_left", "rotate_right", "land", "cw", "ccw"],
+    "landing": ["forward", "back", "left", "right", "up", "down", "rotate_left", "rotate_right", "takeoff", "cw", "ccw"],
+    "flying": []  # All commands allowed
 }
 
-# Cooldown periods (seconds)
-# Time to wait after certain commands before allowing others
+# Command cooldowns
 COMMAND_COOLDOWNS = {
-    "takeoff": 3.0,       # Wait 3s after takeoff before other commands
-    "land": 2.0,          # Wait 2s after landing
-    "emergency": 1.0,     # Brief cooldown after emergency
-    "default": 0.5        # Default cooldown between commands
+    "takeoff": 3.0,
+    "land": 2.0,
+    "default": 0.5
 }
 
-# EEG Processing Settings
+# Command priority (for conflict resolution)
+COMMAND_PRIORITY = {
+    "emergency": 100,
+    "land": 90,
+    "toggle_flight": 80,
+    "cw": 40,
+    "ccw": 40,
+    "rotate_left": 40,
+    "rotate_right": 40,
+}
+
+# EEG Processing
 EEG_CONFIG = {
     "channels": 8,
     "sample_rate": 256.0,
     "buffer_length_secs": 8,
     "filter_low": 7.0,
     "filter_high": 30.0,
-    "update_rate": 2  # Hz - how often to make predictions
+    "update_rate": 2  # Hz - predictions per second
 }
 
-# Prediction Buffer Settings
+# Prediction Buffer (not really used with heading control)
 BUFFER_CONFIG = {
-    "history_size": 50,           # Number of predictions to keep
-    "smoothing_window": 5,        # Window for rolling average
-    "jitter_threshold": 0.2,      # Threshold for detecting prediction jitter
-    "min_consistent_predictions": 3  # Minimum consistent predictions before command
+    "history_size": 50,
+    "smoothing_window": 5,
+    "jitter_threshold": 0.2,
+    "min_consistent_predictions": 3
+}
+
+# Sustained durations (not used with heading control)
+SUSTAINED_DURATIONS = {
+    "Push": 1.0,  # Only Push uses sustained detection now
 }
 
 # Safety Settings
 SAFETY_CONFIG = {
-    "max_flight_time": 600,       # Maximum flight time in seconds (10 min)
-    "low_battery_threshold": 20,  # Battery percentage for auto-land
-    "command_timeout": 30,        # Timeout for no commands (seconds)
-    "enable_auto_land": True      # Auto-land on timeout or low battery
+    "max_flight_time": 600,
+    "low_battery_threshold": 20,
+    "command_timeout": 30,
+    "enable_auto_land": True
 }
 
 # UDP Communication
@@ -213,17 +129,23 @@ WEB_CONFIG = {
 LOGGING_CONFIG = {
     "level": "INFO",
     "format": "%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    "prediction_logging": True,   # Log all predictions
-    "command_logging": True       # Log all commands sent
+    "prediction_logging": True,
+    "command_logging": True
 }
 
-# Continuous Control Configuration
+# SIMPLIFIED Heading Control Configuration
+HEADING_CONTROL = {
+    "enabled": True,
+    "command_interval": 0.5,    # Send rotation commands every 500ms
+    "dead_zone": 0.25,          # Ignore control values below this
+    "smoothing_factor": 0.3,    # Lower = more responsive
+    "rotation_speeds": {
+        "fast": 20,             # Degrees for strong signal
+        "slow": 10              # Degrees for weak signal
+    }
+}
+
+# DEPRECATED - Continuous control not used
 CONTINUOUS_CONTROL = {
-    "enabled": True,  # Start with discrete mode by default
-    "update_rate_hz": 10,  # 10Hz interpolation rate
-    "smoothing_factor": 0.8,  # Higher = more smoothing
-    "dead_zone": 0.3,  # Ignore small signals
-    "max_rotation_speed": 90,  # degrees per second
-    "max_forward_speed": 50,  # cm per second
-    "mode_switch_cooldown": 2.0  # Seconds between mode switches
+    "enabled": False
 }
