@@ -16,8 +16,8 @@
         /* Body Styling */
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: #0a0a0a; /* Dark background */
-            color: #ffffff; /* White text */
+            background: #0a0a0a;
+            color: #ffffff;
             line-height: 1.6;
             min-height: 100vh;
             display: flex;
@@ -64,7 +64,7 @@
             margin-bottom: 2rem;
         }
         
-        /* Panel Styling (for main sections) */
+        /* Panel Styling */
         .panel {
             background: #1a1a1a;
             border: 1px solid #333;
@@ -77,7 +77,7 @@
         .panel h2 {
             font-size: 1.2rem;
             margin-bottom: 1rem;
-            color: #00ff41; /* Green accent */
+            color: #00ff41;
             font-weight: 400;
             display: flex;
             align-items: center;
@@ -93,8 +93,8 @@
         }
         
         /* Model Specific Border Colors */
-        .model-4class { border-left: 3px solid #00a8ff; } /* Blue for 4-class */
-        .model-8class { border-left: 3px solid #ff6b00; } /* Orange for 8-class */
+        .model-4class { border-left: 3px solid #00a8ff; }
+        .model-8class { border-left: 3px solid #ff6b00; }
         
         /* Prediction Bars */
         .predictions {
@@ -134,18 +134,18 @@
         
         .prediction-fill {
             height: 100%;
-            background: linear-gradient(90deg, #00ff41, #00cc33); /* Green gradient */
+            background: linear-gradient(90deg, #00ff41, #00cc33);
             transition: width 0.3s ease;
             position: relative;
         }
         
         .prediction-fill.active {
-            background: linear-gradient(90deg, #ff6b00, #ff4500); /* Orange gradient for active */
+            background: linear-gradient(90deg, #ff6b00, #ff4500);
             box-shadow: 0 0 10px rgba(255, 107, 0, 0.5);
         }
         
         .prediction-fill.below-threshold {
-            background: linear-gradient(90deg, #444, #666); /* Grey if below threshold */
+            background: linear-gradient(90deg, #444, #666);
         }
         
         .threshold-line {
@@ -153,56 +153,9 @@
             top: 0;
             bottom: 0;
             width: 2px;
-            background: #ff0; /* Yellow line */
+            background: #ff0;
             opacity: 0.5;
             pointer-events: none;
-        }
-        
-        /* Sustained Command Indicator */
-        .sustained-indicator {
-            background: #0f0f0f;
-            border: 2px solid #333;
-            border-radius: 8px;
-            padding: 1rem;
-            text-align: center;
-            margin-top: 1rem;
-            min-height: 80px;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-        }
-        
-        .sustained-indicator.active {
-            border-color: #ff6b00;
-            background: rgba(255, 107, 0, 0.1);
-            animation: pulse 1s infinite;
-        }
-        
-        @keyframes pulse {
-            0% { opacity: 0.8; }
-            50% { opacity: 1; }
-            100% { opacity: 0.8; }
-        }
-        
-        .sustained-command {
-            font-size: 1.2rem;
-            font-weight: 600;
-            margin-bottom: 0.3rem;
-        }
-        
-        .sustained-progress {
-            height: 6px;
-            background: #1a1a1a;
-            border-radius: 3px;
-            overflow: hidden;
-            margin-top: 0.5rem;
-        }
-        
-        .sustained-fill {
-            height: 100%;
-            background: #ff6b00;
-            width: 0%;
-            transition: width 0.1s linear;
         }
         
         /* Status Grid */
@@ -265,7 +218,7 @@
             font-weight: 600;
         }
         
-        /* Drone Controls (Manual Buttons) */
+        /* Drone Controls */
         .drone-controls {
             display: grid;
             grid-template-columns: repeat(3, 1fr);
@@ -306,6 +259,13 @@
         .btn.danger {
             background: #ff4141;
             border-color: #ff4141;
+            font-weight: 600;
+        }
+        
+        .btn.warning {
+            background: #ff6b00;
+            color: #000;
+            border-color: #ff6b00;
             font-weight: 600;
         }
         
@@ -379,6 +339,87 @@
             gap: 2rem;
         }
         
+        /* Debug Panel */
+        .debug-panel {
+            background: #0f0f0f;
+            border: 2px solid #ff6b00;
+            border-radius: 8px;
+            padding: 1rem;
+            margin-bottom: 1rem;
+        }
+        
+        .debug-info {
+            font-family: 'Courier New', monospace;
+            font-size: 0.85rem;
+            color: #ff6b00;
+        }
+        
+        /* State Machine Visualization */
+        .state-diagram {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 1rem;
+            margin: 1rem 0;
+        }
+        
+        .state-node {
+            padding: 0.5rem 1rem;
+            border: 2px solid #444;
+            border-radius: 4px;
+            font-size: 0.9rem;
+        }
+        
+        .state-node.active {
+            border-color: #00ff41;
+            background: rgba(0, 255, 65, 0.1);
+            color: #00ff41;
+        }
+        
+        .state-transition {
+            color: #666;
+        }
+        
+        /* Manual Override Toggle */
+        .override-toggle {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            padding: 0.5rem;
+            background: #1a1a1a;
+            border-radius: 4px;
+            margin-bottom: 1rem;
+        }
+        
+        .toggle-switch {
+            position: relative;
+            width: 50px;
+            height: 24px;
+            background: #444;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+        
+        .toggle-switch.active {
+            background: #ff6b00;
+        }
+        
+        .toggle-slider {
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            width: 20px;
+            height: 20px;
+            background: #fff;
+            border-radius: 50%;
+            transition: transform 0.3s;
+        }
+        
+        .toggle-switch.active .toggle-slider {
+            transform: translateX(26px);
+        }
+        
         /* Responsive Adjustments */
         @media (max-width: 1200px) {
             .main-grid, .bottom-grid {
@@ -407,14 +448,21 @@
             <span>4-Class: Rotation/Fwd</span>
             <span>|</span>
             <span>8-Class: Actions</span>
-            <span>|</span>
-            <button id="modeToggle" class="mode-toggle" onclick="toggleControlMode()">
-                Mode: <span id="currentMode">Discrete</span>
-            </button>
         </div>
     </header>
     
     <div class="container">
+        <!-- Debug Panel -->
+        <div class="debug-panel">
+            <h3 style="color: #ff6b00; margin-bottom: 0.5rem;">System Debug Info</h3>
+            <div class="debug-info">
+                <div>Drone State: <span id="debugDroneState">Unknown</span></div>
+                <div>Heading Control: <span id="debugHeadingControl">Inactive</span></div>
+                <div>Manual Override: <span id="debugManualOverride">OFF</span></div>
+                <div>Last State Change: <span id="debugLastStateChange">None</span></div>
+            </div>
+        </div>
+        
         <!-- Main prediction panels -->
         <div class="main-grid">
             <!-- 4-Class Model Panel -->
@@ -442,12 +490,12 @@
                             <span>Left Fist → Rotate Left</span>
                             <div class="prediction-info">
                                 <span id="4class_leftProb">0.00</span>
-                                <span class="threshold-indicator">(≥0.70)</span>
+                                <span class="threshold-indicator">(≥0.30)</span>
                             </div>
                         </div>
                         <div class="prediction-track">
                             <div id="4class_leftBar" class="prediction-fill" style="width: 0%"></div>
-                            <div class="threshold-line" style="left: 70%"></div>
+                            <div class="threshold-line" style="left: 30%"></div>
                         </div>
                     </div>
                     <div class="prediction-bar">
@@ -455,34 +503,35 @@
                             <span>Right Fist → Rotate Right</span>
                             <div class="prediction-info">
                                 <span id="4class_rightProb">0.00</span>
-                                <span class="threshold-indicator">(≥0.70)</span>
+                                <span class="threshold-indicator">(≥0.30)</span>
                             </div>
                         </div>
                         <div class="prediction-track">
                             <div id="4class_rightBar" class="prediction-fill" style="width: 0%"></div>
-                            <div class="threshold-line" style="left: 70%"></div>
+                            <div class="threshold-line" style="left: 30%"></div>
                         </div>
                     </div>
                     <div class="prediction-bar">
                         <div class="prediction-label">
-                            <span>Both Fists → Continuous Control</span>
+                            <span>Both Fists → Forward</span>
                             <div class="prediction-info">
                                 <span id="4class_bothProb">0.00</span>
-                                <span class="threshold-indicator">(≥0.65)</span>
+                                <span class="threshold-indicator">(≥0.30)</span>
                             </div>
                         </div>
                         <div class="prediction-track">
                             <div id="4class_bothBar" class="prediction-fill" style="width: 0%"></div>
-                            <div class="threshold-line" style="left: 65%"></div>
+                            <div class="threshold-line" style="left: 30%"></div>
                         </div>
                     </div>
                 </div>
                 
-                <div id="4class_sustainedIndicator" class="sustained-indicator">
-                    <div id="4class_sustainedCommand" class="sustained-command">No Command</div>
-                    <div style="font-size: 0.8rem; color: #888;">Hold for 1.5s</div>
-                    <div class="sustained-progress">
-                        <div id="4class_sustainedFill" class="sustained-fill"></div>
+                <!-- Heading Control Status -->
+                <div style="margin-top: 1rem; padding: 0.5rem; background: #0f0f0f; border-radius: 4px;">
+                    <div style="font-size: 0.9rem; color: #888;">Heading Control</div>
+                    <div style="display: flex; justify-content: space-between; margin-top: 0.5rem;">
+                        <span>Control Value: <span id="headingControlValue" style="color: #00ff41;">0.00</span></span>
+                        <span>Dead Zone: <span id="headingDeadZone" style="color: #666;">NO</span></span>
                     </div>
                 </div>
             </div>
@@ -499,22 +548,25 @@
                             <span>Push → Takeoff/Land</span>
                             <div class="prediction-info">
                                 <span id="8class_pushProb">0.00</span>
-                                <span class="threshold-indicator">(≥0.75)</span>
+                                <span class="threshold-indicator">(≥0.60)</span>
                             </div>
                         </div>
                         <div class="prediction-track">
                             <div id="8class_pushBar" class="prediction-fill" style="width: 0%"></div>
-                            <div class="threshold-line" style="left: 75%"></div>
+                            <div class="threshold-line" style="left: 60%"></div>
                         </div>
                     </div>
                 </div>
                 
-                <div id="8class_sustainedIndicator" class="sustained-indicator">
-                    <div id="8class_sustainedCommand" class="sustained-command">No Command</div>
-                    <div style="font-size: 0.8rem; color: #888;">Hold for 2.0s</div>
-                    <div class="sustained-progress">
-                        <div id="8class_sustainedFill" class="sustained-fill"></div>
-                    </div>
+                <!-- State Machine Visualization -->
+                <div class="state-diagram">
+                    <div id="stateGrounded" class="state-node">Grounded</div>
+                    <div class="state-transition">→</div>
+                    <div id="stateTakingOff" class="state-node">Taking Off</div>
+                    <div class="state-transition">→</div>
+                    <div id="stateFlying" class="state-node">Flying</div>
+                    <div class="state-transition">→</div>
+                    <div id="stateLanding" class="state-node">Landing</div>
                 </div>
             </div>
         </div>
@@ -538,19 +590,13 @@
                     </div>
                 </div>
                 
-                <div class="command-flow">
-                    <div class="flow-item">
-                        <div id="activeModel" style="color: #888;">No Active Model</div>
+                <!-- Manual Override Toggle -->
+                <div class="override-toggle">
+                    <span>Manual Override (Test Rotation Without Flying):</span>
+                    <div id="overrideToggle" class="toggle-switch" onclick="toggleManualOverride()">
+                        <div class="toggle-slider"></div>
                     </div>
-                    <div class="flow-arrow">→</div>
-                    <div class="flow-item">
-                        <div id="activeCommand" class="active-command" style="display: none;">-</div>
-                        <div id="noCommand" style="color: #666;">No Command</div>
-                    </div>
-                    <div class="flow-arrow">→</div>
-                    <div class="flow-item">
-                        <div id="droneAction" style="color: #888;">Waiting</div>
-                    </div>
+                    <span id="overrideStatus" style="color: #666;">OFF</span>
                 </div>
                 
                 <h3 style="margin-top: 1.5rem; margin-bottom: 1rem; font-size: 1.1rem; color: #00ff41;">
@@ -575,6 +621,15 @@
                     <button class="btn" onclick="sendManualCommand('rotate_right')">
                         Right →
                     </button>
+                    <button class="btn warning" onclick="simulateCompletion('takeoff')">
+                        Simulate Takeoff Done
+                    </button>
+                    <button class="btn warning" onclick="simulateCompletion('land')">
+                        Simulate Land Done
+                    </button>
+                    <button class="btn" onclick="resetHeadingController()">
+                        Reset Heading
+                    </button>
                 </div>
             </div>
             
@@ -593,6 +648,7 @@
         // WebSocket connection
         let socket = null;
         let droneState = 'grounded';
+        let manualOverride = false;
         
         // DOM elements
         const elements = {
@@ -600,13 +656,29 @@
             neurosityStatus: document.getElementById('neurosityStatus'),
             modelStatus: document.getElementById('modelStatus'),
             droneState: document.getElementById('droneState'),
-            activeModel: document.getElementById('activeModel'),
-            activeCommand: document.getElementById('activeCommand'),
-            noCommand: document.getElementById('noCommand'),
-            droneAction: document.getElementById('droneAction'),
             commandHistory: document.getElementById('commandHistory'),
             takeoffBtn: document.getElementById('takeoffBtn'),
             landBtn: document.getElementById('landBtn'),
+            
+            // Debug elements
+            debugDroneState: document.getElementById('debugDroneState'),
+            debugHeadingControl: document.getElementById('debugHeadingControl'),
+            debugManualOverride: document.getElementById('debugManualOverride'),
+            debugLastStateChange: document.getElementById('debugLastStateChange'),
+            
+            // State nodes
+            stateGrounded: document.getElementById('stateGrounded'),
+            stateTakingOff: document.getElementById('stateTakingOff'),
+            stateFlying: document.getElementById('stateFlying'),
+            stateLanding: document.getElementById('stateLanding'),
+            
+            // Heading control
+            headingControlValue: document.getElementById('headingControlValue'),
+            headingDeadZone: document.getElementById('headingDeadZone'),
+            
+            // Override
+            overrideToggle: document.getElementById('overrideToggle'),
+            overrideStatus: document.getElementById('overrideStatus'),
             
             // 4-class elements
             '4class_restProb': document.getElementById('4class_restProb'),
@@ -617,25 +689,19 @@
             '4class_leftBar': document.getElementById('4class_leftBar'),
             '4class_rightBar': document.getElementById('4class_rightBar'),
             '4class_bothBar': document.getElementById('4class_bothBar'),
-            '4class_sustainedIndicator': document.getElementById('4class_sustainedIndicator'),
-            '4class_sustainedCommand': document.getElementById('4class_sustainedCommand'),
-            '4class_sustainedFill': document.getElementById('4class_sustainedFill'),
             
             // 8-class elements
             '8class_pushProb': document.getElementById('8class_pushProb'),
-            '8class_pushBar': document.getElementById('8class_pushBar'),
-            '8class_sustainedIndicator': document.getElementById('8class_sustainedIndicator'),
-            '8class_sustainedCommand': document.getElementById('8class_sustainedCommand'),
-            '8class_sustainedFill': document.getElementById('8class_sustainedFill')
+            '8class_pushBar': document.getElementById('8class_pushBar')
         };
         
-        // Confidence thresholds (from config.py, mirrored here for frontend display logic)
+        // Updated thresholds from config
         const thresholds = {
             'Rest': 0.50,
-            'Left_Fist': 0.70,
-            'Right_Fist': 0.70,
-            'Both_Fists': 0.65,
-            'Push': 0.75,
+            'Left_Fist': 0.30,  // Updated from config
+            'Right_Fist': 0.30, // Updated from config
+            'Both_Fists': 0.30, // Updated from config
+            'Push': 0.60,       // Updated from config
         };
         
         // Connect to WebSocket
@@ -662,7 +728,10 @@
             socket.on('system_update', updateSystemInfo);
             socket.on('drone_command_sent', (data) => {
                 addCommandToHistory(data);
-                updateDroneAction(data.command);
+            });
+            socket.on('manual_override_status', (data) => {
+                manualOverride = data.active;
+                updateManualOverrideDisplay();
             });
         }
         
@@ -693,11 +762,28 @@
             if (data.mapper_state) {
                 droneState = data.mapper_state.drone_state;
                 updateDroneState();
+                
+                // Update heading control info
+                if (data.mapper_state.heading_control) {
+                    const hc = data.mapper_state.heading_control;
+                    elements.headingControlValue.textContent = hc.smoothed_value.toFixed(3);
+                    elements.headingDeadZone.textContent = hc.in_dead_zone ? 'YES' : 'NO';
+                    elements.headingDeadZone.style.color = hc.in_dead_zone ? '#666' : '#00ff41';
+                    
+                    elements.debugHeadingControl.textContent = hc.enabled ? 'Active' : 'Disabled';
+                    elements.debugHeadingControl.style.color = hc.enabled ? '#00ff41' : '#666';
+                }
+            }
+            
+            // Update manual override status
+            if (data.manual_override !== undefined) {
+                manualOverride = data.manual_override;
+                updateManualOverrideDisplay();
             }
         }
         
         function updateDualPredictions(data) {
-            if (data['4_class']) 
+            if (data['4_class']) {
                 update4ClassPredictions(data['4_class']);
             }
             if (data['8_class']) {
@@ -736,84 +822,43 @@
         }
         
         function updateSystemInfo(data) {
-            if (data.sustained_info) {
-                updateSustainedDisplays(data.sustained_info);
-            }
-            
             if (data.mapper_state) {
                 droneState = data.mapper_state.drone_state;
                 updateDroneState();
                 
-                if (data.mapper_state.last_command) {
-                    showActiveCommand(data.mapper_state.last_command);
-                }
-            }
-        }
-        
-        function updateSustainedDisplays(sustainedInfo) {
-            // Update the 4-class sustained indicator
-            updateModelSustained('4class', ['Left_Fist', 'Right_Fist'], sustainedInfo);
-            
-            // Update the 8-class sustained indicator
-            updateModelSustained('8class', ['Push'], sustainedInfo);
-        }
-        
-        function updateModelSustained(modelPrefix, classes, sustainedInfo) {
-            let activeSustained = null;
-            let maxProgress = 0;
-            
-            for (const className of classes) {
-                if (sustainedInfo[className]) {
-                    const info = sustainedInfo[className];
-                    if (info.progress > maxProgress) {
-                        maxProgress = info.progress;
-                        activeSustained = { class: className, ...info };
-                    }
+                if (data.mapper_state.heading_control) {
+                    const hc = data.mapper_state.heading_control;
+                    elements.headingControlValue.textContent = hc.smoothed_value.toFixed(3);
+                    elements.headingDeadZone.textContent = hc.in_dead_zone ? 'YES' : 'NO';
+                    elements.headingDeadZone.style.color = hc.in_dead_zone ? '#666' : '#00ff41';
                 }
             }
             
-            const indicator = elements[`${modelPrefix}_sustainedIndicator`];
-            const command = elements[`${modelPrefix}_sustainedCommand`];
-            const fill = elements[`${modelPrefix}_sustainedFill`];
-            
-            if (activeSustained && !activeSustained.triggered) {
-                indicator.classList.add('active');
-                command.textContent = getCommandDisplay(activeSustained.class);
-                fill.style.width = `${activeSustained.progress * 100}%`;
-                
-                elements.activeModel.textContent = modelPrefix === '4class' ? '4-Class Model' : 'Action Model';
-                elements.activeModel.style.color = '#ff6b00';
-            } else {
-                indicator.classList.remove('active');
-                command.textContent = 'No Command';
-                fill.style.width = '0%';
+            // Handle command completion
+            if (data.command_completion) {
+                const comp = data.command_completion;
+                elements.debugLastStateChange.textContent = `${comp.command} completed (${comp.success ? 'success' : 'failed'})`;
+                elements.debugLastStateChange.style.color = comp.success ? '#00ff41' : '#ff4141';
             }
-        }
-        
-        function getCommandDisplay(className) {
-            const mappings = {
-                'Left_Fist': 'ROTATE LEFT',
-                'Right_Fist': 'ROTATE RIGHT',
-                'Push': droneState === 'grounded' ? 'TAKEOFF' : 'LAND'
-            };
-            return mappings[className] || className;
-        }
-        
-        function showActiveCommand(command) {
-            elements.activeCommand.textContent = command.toUpperCase();
-            elements.activeCommand.style.display = 'block';
-            elements.noCommand.style.display = 'none';
-            
-            setTimeout(() => {
-                elements.activeCommand.style.display = 'none';
-                elements.noCommand.style.display = 'block';
-                elements.activeModel.style.color = '#888';
-            }, 2000);
         }
         
         function updateDroneState() {
             elements.droneState.textContent = droneState.charAt(0).toUpperCase() + droneState.slice(1);
             elements.droneState.className = 'status-value';
+            
+            // Update debug display
+            elements.debugDroneState.textContent = droneState;
+            elements.debugDroneState.style.color = droneState === 'flying' ? '#00ff41' : '#ffaa00';
+            
+            // Update state diagram
+            const states = ['Grounded', 'TakingOff', 'Flying', 'Landing'];
+            states.forEach(state => {
+                const element = elements[`state${state}`];
+                if (element) {
+                    const isActive = droneState.toLowerCase().replace('_', '') === state.toLowerCase();
+                    element.classList.toggle('active', isActive);
+                }
+            });
             
             if (droneState === 'flying') {
                 elements.droneState.classList.add('connected');
@@ -827,25 +872,6 @@
             elements.landBtn.disabled = droneState !== 'flying';
         }
         
-        function updateDroneAction(command) {
-            const actionMap = {
-                'takeoff': 'Taking Off', 'land': 'Landing',
-                'rotate_left': 'Rotating Left', 'rotate_right': 'Rotating Right',
-                'forward': 'Moving Forward', 'back': 'Moving Back',
-                'left': 'Strafing Left', 'right': 'Strafing Right',
-                'up': 'Ascending', 'down': 'Descending',
-                'emergency': 'EMERGENCY STOP'
-            };
-            
-            elements.droneAction.textContent = actionMap[command] || command;
-            elements.droneAction.style.color = '#ff6b00';
-            
-            setTimeout(() => {
-                elements.droneAction.textContent = 'Waiting';
-                elements.droneAction.style.color = '#888';
-            }, 3000);
-        }
-        
         function updateStatusElement(element, text, isConnected) {
             element.textContent = text;
             element.classList.toggle('connected', isConnected);
@@ -856,13 +882,19 @@
             const time = new Date().toLocaleTimeString();
             const entry = document.createElement('div');
             entry.className = 'history-entry';
+            
+            let commandDisplay = data.command.toUpperCase();
+            if (data.degrees) {
+                commandDisplay += ` ${data.degrees}°`;
+            }
+            
             entry.innerHTML = `
                 <span>
                     <span class="history-time">${time}</span>
-                    <span class="history-command">${data.command.toUpperCase()}</span>
+                    <span class="history-command">${commandDisplay}</span>
                     <span class="history-source">(${data.source_model}/${data.source_class})</span>
                 </span>
-                <span>${data.confidence.toFixed(2)}</span>
+                <span>${data.confidence ? data.confidence.toFixed(2) : ''}</span>
             `;
             
             if (elements.commandHistory.firstChild.textContent.includes('Waiting')) {
@@ -887,6 +919,50 @@
             } catch (error) {
                 console.error('Error sending command:', error);
             }
+        }
+        
+        async function simulateCompletion(command) {
+            try {
+                const response = await fetch('/update_drone_state', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ command, success: true })
+                });
+                const result = await response.json();
+                console.log('Simulated completion:', result);
+            } catch (error) {
+                console.error('Error simulating completion:', error);
+            }
+        }
+        
+        async function toggleManualOverride() {
+            try {
+                const response = await fetch('/toggle_manual_override', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({})
+                });
+                const result = await response.json();
+                if (result.success) {
+                    manualOverride = result.manual_override;
+                    updateManualOverrideDisplay();
+                }
+            } catch (error) {
+                console.error('Error toggling manual override:', error);
+            }
+        }
+        
+        function updateManualOverrideDisplay() {
+            elements.overrideToggle.classList.toggle('active', manualOverride);
+            elements.overrideStatus.textContent = manualOverride ? 'ON' : 'OFF';
+            elements.overrideStatus.style.color = manualOverride ? '#ff6b00' : '#666';
+            elements.debugManualOverride.textContent = manualOverride ? 'ON' : 'OFF';
+            elements.debugManualOverride.style.color = manualOverride ? '#ff6b00' : '#666';
+        }
+        
+        function resetHeadingController() {
+            // This would need to be implemented on the backend
+            console.log('Reset heading controller requested');
         }
         
         function updateStatus(status) {
