@@ -1,5 +1,5 @@
 # neurosity_bci_bridge.py
-# Updated BCI bridge with dual-model and continuous control support
+# Simplified BCI bridge with heading-based rotation control
 
 import os
 import sys
@@ -18,12 +18,11 @@ from flask_socketio import SocketIO, emit
 from collections import deque
 from datetime import datetime
 
-# --- MODIFICATION: Import TriadicController ---
-from continuous_control import TriadicController
-# --- END MODIFICATION ---
+# Import the heading controller
+from heading_controller import HeadingController
 
 # Import existing modules
-from config import EEG_CONFIG, UDP_CONFIG, WEB_CONFIG, LOGGING_CONFIG, PUSH_COMMAND_COOLDOWN, CONFIDENCE_THRESHOLDS, CONTINUOUS_CONTROL
+from config import EEG_CONFIG, UDP_CONFIG, WEB_CONFIG, LOGGING_CONFIG, PUSH_COMMAND_COOLDOWN, CONFIDENCE_THRESHOLDS, HEADING_CONTROL
 from model_manager import ModelManager
 from command_mapper import CommandMapper
 from prediction_buffer import PredictionBuffer
@@ -59,15 +58,15 @@ raw_unsubscribe = None
 cov_counter = 0
 data_processing_lock = Lock()
 
-# --- MODIFICATION: Add TriadicController global ---
-triadic_controller = None
-# --- END MODIFICATION ---
+# Heading controller
+heading_controller = None
 
 # UDP Socket for drone commands
 udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
-#push cooldown counter
+# Command timing
 last_push_command_time = 0
+last_rotation_command_time = 0
 
 def load_dotenv_config():
     logger.info(f"Loading .env from: {ENV_PATH}")
@@ -91,8 +90,8 @@ def initialize_models():
         logger.info(f"{model_name}: {info}")
 
 def initialize_components():
-    """Initialize command mapper, prediction buffer, and continuous controller"""
-    global command_mapper, prediction_buffer, triadic_controller
+    """Initialize all components"""
+    global command_mapper, prediction_buffer, heading_controller
     
     logger.info("Initializing command mapper...")
     command_mapper = CommandMapper()
@@ -100,19 +99,10 @@ def initialize_components():
     logger.info("Initializing prediction buffer...")
     prediction_buffer = PredictionBuffer()
 
-    # --- MODIFICATION: Initialize TriadicController ---
-    logger.info("Initializing Triadic Controller...")
-    triadic_controller = TriadicController(CONTINUOUS_CONTROL)
-    if CONTINUOUS_CONTROL["enabled"]:
-        logger.info(">>> Continuous Control Mode is ACTIVE <<<")
-    else:
-        logger.info(">>> Discrete Control Mode is ACTIVE <<<")
-    # --- END MODIFICATION ---
-
-    active_mappings = command_mapper.get_active_mappings()
-    logger.info(f"Active discrete command mappings: {len(active_mappings)}")
-    for mapping in active_mappings:
-        logger.info(f"  {mapping['class']} → {mapping['command']} (threshold: {mapping['threshold']})")
+    logger.info("Initializing heading controller...")
+    heading_controller = HeadingController(HEADING_CONTROL)
+    
+    logger.info(">>> SIMPLIFIED HEADING CONTROL ACTIVE <<<")
 
 def initialize_filterer():
     global filterer
@@ -125,7 +115,7 @@ def initialize_filterer():
             sample_rate=EEG_CONFIG["sample_rate"],
             signal_buffer_length=int(EEG_CONFIG["sample_rate"] * EEG_CONFIG["buffer_length_secs"])
         )
-        logger.info(f"Filterer initialized: {EEG_CONFIG['filter_low']}-{EEG_CONFIG['filter_high']}Hz, {EEG_CONFIG['channels']} channels")
+        logger.info(f"Filterer initialized: {EEG_CONFIG['filter_low']}-{EEG_CONFIG['filter_high']}Hz")
     except Exception as e:
         logger.error(f"Filterer initialization failed: {e}")
         sys.exit(1)
@@ -149,27 +139,17 @@ def connect_neurosity():
         logger.error(f"Neurosity connection failed: {e}")
         return False
 
-def send_drone_command(command_data, is_rc_command=False):
+def send_drone_command(command_data):
     """Send command to drone controller via UDP"""
     try:
-        if is_rc_command:
-            # For RC commands, the data is already a formatted string
-            message = command_data.encode('utf-8')
-            log_message = command_data
-        else:
-            # For discrete commands, data is a dict that needs to be JSON encoded
-            message = json.dumps(command_data).encode('utf-8')
-            log_message = f"{command_data['command']} (source: {command_data.get('source_class', 'Unknown')})"
-
+        message = json.dumps(command_data).encode('utf-8')
         udp_socket.sendto(message, (UDP_CONFIG["drone_ip"], UDP_CONFIG["drone_port"]))
         
-        # Log command, but avoid spamming for RC commands
-        if not is_rc_command:
-            logger.info(f"Sent drone command: {log_message}")
-            socketio.emit('drone_command_sent', command_data)
-        else:
-            logger.debug(f"Sent RC command: {log_message}")
-            
+        logger.info(f"Sent: {command_data.get('command', 'unknown')} "
+                   f"{command_data.get('degrees', '')}° "
+                   f"(control: {command_data.get('control_value', 0):.2f})")
+        
+        socketio.emit('drone_command_sent', command_data)
         return True
     except Exception as e:
         logger.error(f"Failed to send drone command: {e}")
@@ -177,9 +157,9 @@ def send_drone_command(command_data, is_rc_command=False):
 
 def process_eeg_data(brainwave_data):
     """Process raw EEG data and make predictions"""
-    global cov_counter, filterer, model_manager, command_mapper, prediction_buffer, triadic_controller, last_push_command_time
-
-    if not all([filterer, model_manager, command_mapper, prediction_buffer, triadic_controller]):
+    global cov_counter, last_push_command_time
+    
+    if not all([filterer, model_manager, command_mapper, prediction_buffer, heading_controller]):
         return
 
     with data_processing_lock:
@@ -208,10 +188,15 @@ def process_eeg_data(brainwave_data):
                 if cov_matrix is None or cov_matrix.size == 0:
                     return
                 
+                # Get predictions from both models
                 dual_predictions = model_manager.predict_dual(cov_matrix)
+                
+                # Log what keys we got
+                logger.debug(f"Prediction keys: {[k for k in dual_predictions.keys() if k not in ['timestamp', 'total_inference_time']]}")
+                
                 socketio.emit('dual_predictions', dual_predictions)
                 
-                # --- Push command logic (works in both discrete and continuous modes) ---
+                # Handle Push command (8-class model)
                 push_prediction = dual_predictions.get('8_class')
                 if push_prediction and push_prediction['predicted_class'] == 'Push' and \
                    push_prediction['confidence'] >= CONFIDENCE_THRESHOLDS['Push'] and \
@@ -220,86 +205,86 @@ def process_eeg_data(brainwave_data):
                     drone_state = command_mapper.get_state_info()['drone_state']
                     command_to_send = 'takeoff' if drone_state == 'grounded' else 'land'
                     drone_command = {
-                        "command": command_to_send, "confidence": push_prediction['confidence'],
-                        "source_class": "Push", "source_model": "8_class", "timestamp": int(current_time * 1000)
+                        "command": command_to_send,
+                        "confidence": push_prediction['confidence'],
+                        "source_class": "Push",
+                        "source_model": "8_class",
+                        "timestamp": int(current_time * 1000)
                     }
                     send_drone_command(drone_command)
                     last_push_command_time = current_time
-                    logger.info(f"Instant '{command_to_send}' triggered by Push.")
-                    # Prevent this 'Push' from being processed by other systems
-                    if 'Push' in push_prediction['probabilities']:
-                        push_prediction['probabilities']['Push'] = 0.0
-                    push_prediction['predicted_class'] = 'Rest'
-
-                # --- MODIFICATION: Mode-dependent processing ---
-                if CONTINUOUS_CONTROL["enabled"]:
-                    # --- CONTINUOUS MODE ---
-                    prediction_4_class = dual_predictions.get('3_class') # Backend sends 4-class as '3_class' key
-                    if prediction_4_class:
-                        triadic_controller.update_prediction(prediction_4_class)
-                else:
-                    # --- DISCRETE MODE ---
-                    sustained_commands = prediction_buffer.add_predictions(dual_predictions)
-                    for sustained in sustained_commands:
-                        prediction_buffer.reset_sustained_command(sustained["class"])
-                        command_result = command_mapper.map_predictions_to_commands(
-                            {sustained["model"]: {
-                                "predicted_class": sustained["class"], "confidence": sustained["average_confidence"]
-                            }}, current_time
-                        )
-                        if command_result:
-                            drone_command = {
-                                "command": command_result["command"], "confidence": command_result["confidence"],
-                                "source_class": command_result["source_class"], "source_model": command_result["source_model"],
-                                "timestamp": int(current_time * 1000), "sustained_duration": sustained["duration"]
-                            }
-                            send_drone_command(drone_command)
-                # --- END MODIFICATION ---
-
-                buffer_stats = prediction_buffer.get_buffer_stats()
-                sustained_info = prediction_buffer.get_sustained_info()
+                    logger.info(f">>> {command_to_send.upper()} triggered by Push thought <<<")
+                
+                # Update heading controller with 4-class predictions
+                # NOTE: The model manager stores it as '4_class' even though it has 4 classes
+                prediction_4_class = dual_predictions.get('4_class')
+                if prediction_4_class and heading_controller:
+                    heading_controller.update_prediction(prediction_4_class)
+                    logger.debug(f"Updated heading controller with {prediction_4_class.get('predicted_class')} "
+                               f"(conf: {prediction_4_class.get('confidence', 0):.2f})")
+                
+                # Send status update
                 mapper_state = command_mapper.get_state_info()
+                if heading_controller:
+                    mapper_state['heading_control'] = heading_controller.get_state()
+                
                 socketio.emit('system_update', {
-                    "buffer_stats": buffer_stats, "sustained_info": sustained_info, "mapper_state": mapper_state
+                    "mapper_state": mapper_state,
+                    "timestamp": int(current_time * 1000)
                 })
                 
         except Exception as e:
             logger.error(f"Error processing EEG data: {e}", exc_info=True)
 
-# --- MODIFICATION: New thread for sending continuous commands ---
-def continuous_control_sender_thread():
+def rotation_command_thread():
     """
-    A high-frequency thread that continuously sends RC commands to the drone
-    when continuous control mode is active.
+    Thread that sends rotation commands at regular intervals.
+    Only sends commands when drone is flying.
     """
-    global triadic_controller, command_mapper
+    global heading_controller, command_mapper, last_rotation_command_time
     
-    # Wait for components to be initialized
-    while not all([triadic_controller, command_mapper]):
+    # Wait for initialization
+    while not all([heading_controller, command_mapper]):
         time.sleep(0.5)
-
-    if not triadic_controller.enabled:
-        logger.info("Continuous control sender thread exiting (mode is disabled).")
-        return
-
-    logger.info("Continuous control sender thread started.")
+    
+    logger.info("Rotation command thread started")
+    last_log_time = 0
     
     while True:
         try:
-            # Only send commands if the controller is enabled AND the drone is flying
-            is_flying = command_mapper.get_state_info()['drone_state'] == 'flying'
-            if triadic_controller.enabled and is_flying:
-                rc_command = triadic_controller.get_rc_command()
-                if rc_command:
-                    send_drone_command(rc_command, is_rc_command=True)
+            current_time = time.time()
             
-            # Sleep to maintain the target update rate
-            time.sleep(1.0 / triadic_controller.update_rate_hz)
+            # Check if drone is flying
+            drone_state = command_mapper.get_state_info()['drone_state']
+            is_flying = drone_state == 'flying'
+            
+            # Check if it's time to potentially send a command
+            if heading_controller.should_send_command(current_time, last_rotation_command_time):
+                if is_flying and heading_controller.enabled:
+                    # Get rotation command (might be None if in dead zone)
+                    command = heading_controller.get_rotation_command()
+                    
+                    if command:
+                        # Send the command
+                        send_drone_command(command)
+                        last_rotation_command_time = current_time
+                    else:
+                        # In dead zone - no command sent
+                        # Log this occasionally so we know it's working
+                        if current_time - last_log_time > 2.0:
+                            logger.debug("In dead zone - no rotation command sent")
+                            last_log_time = current_time
+                        last_rotation_command_time = current_time
+                else:
+                    # Not flying - don't send commands but update timer
+                    last_rotation_command_time = current_time
+            
+            # Check frequently for smooth operation
+            time.sleep(0.05)  # 50ms
             
         except Exception as e:
-            logger.error(f"Error in continuous control sender: {e}")
-            time.sleep(1) # Prevent rapid-fire errors
-# --- END MODIFICATION ---
+            logger.error(f"Error in rotation command thread: {e}")
+            time.sleep(1)
 
 def neurosity_stream_runner():
     """Background thread for Neurosity streaming"""
@@ -326,10 +311,33 @@ def send_command():
     data = request.json
     command = data.get('command')
     if command:
-        drone_command = {
-            "command": command, "confidence": 1.0, "source_class": "Manual",
-            "source_model": "User", "timestamp": int(time.time() * 1000)
-        }
+        # Map dashboard commands to drone commands
+        if command == 'rotate_left':
+            drone_command = {
+                "command": "ccw",
+                "degrees": 45,
+                "confidence": 1.0,
+                "source_class": "Manual",
+                "source_model": "User",
+                "timestamp": int(time.time() * 1000)
+            }
+        elif command == 'rotate_right':
+            drone_command = {
+                "command": "cw",
+                "degrees": 45,
+                "confidence": 1.0,
+                "source_class": "Manual",
+                "source_model": "User",
+                "timestamp": int(time.time() * 1000)
+            }
+        else:
+            drone_command = {
+                "command": command,
+                "confidence": 1.0,
+                "source_class": "Manual",
+                "source_model": "User",
+                "timestamp": int(time.time() * 1000)
+            }
         success = send_drone_command(drone_command)
         return jsonify({"success": success})
     return jsonify({"success": False, "error": "No command provided"})
@@ -348,27 +356,32 @@ def update_drone_state():
 @socketio.on('connect')
 def handle_connect():
     logger.info(f"Dashboard connected: {request.sid}")
-    if all([neurosity, model_manager, command_mapper]):
-        emit('connection_status', {
-            'neurosity': True, 'models_loaded': True, 'model_info': model_manager.get_model_info(),
-            'active_mappings': command_mapper.get_active_mappings(), 'mapper_state': command_mapper.get_state_info()
-        })
+    emit_status()
 
 @socketio.on('request_status')
 def handle_status_request():
+    emit_status()
+
+def emit_status():
+    """Emit current system status"""
     status = {
-        'neurosity_connected': neurosity is not None, 'models_loaded': model_manager is not None,
-        'components_ready': all([command_mapper, prediction_buffer]),
+        'neurosity_connected': neurosity is not None,
+        'models_loaded': model_manager is not None,
+        'heading_control_enabled': HEADING_CONTROL["enabled"]
     }
-    if model_manager: status['model_info'] = model_manager.get_model_info()
-    if command_mapper: status['mapper_state'] = command_mapper.get_state_info()
-    if prediction_buffer: status['buffer_stats'] = prediction_buffer.get_buffer_stats()
-    emit('system_status', status)
+    if model_manager:
+        status['model_info'] = model_manager.get_model_info()
+    if command_mapper:
+        mapper_state = command_mapper.get_state_info()
+        if heading_controller:
+            mapper_state['heading_control'] = heading_controller.get_state()
+        status['mapper_state'] = mapper_state
+    socketio.emit('system_status', status)
 
 # Main execution
 if __name__ == "__main__":
     print("\n" + "="*60)
-    print("NEUROSITY DUAL-MODEL BCI -> DRONE CONTROL BRIDGE")
+    print("NEUROSITY BCI DRONE CONTROL - SIMPLIFIED")
     print("="*60 + "\n")
     
     load_dotenv_config()
@@ -382,22 +395,24 @@ if __name__ == "__main__":
     
     print("\nTesting drone controller connection...")
     test_command = {
-        "command": "status", "confidence": 1.0, "source_class": "System",
-        "source_model": "Startup", "timestamp": int(time.time() * 1000)
+        "command": "status",
+        "confidence": 1.0,
+        "source_class": "System",
+        "source_model": "Startup",
+        "timestamp": int(time.time() * 1000)
     }
     if send_drone_command(test_command):
         print("✓ Successfully sent test command to drone controller")
     else:
         print("✗ Failed to send test command - check if drone_controller.py is running")
     
+    # Start background threads
     Thread(target=neurosity_stream_runner, daemon=True).start()
+    Thread(target=rotation_command_thread, daemon=True).start()
     
-    # --- MODIFICATION: Start the continuous control sender thread ---
-    if CONTINUOUS_CONTROL["enabled"]:
-        Thread(target=continuous_control_sender_thread, daemon=True).start()
-    # --- END MODIFICATION ---
-    
-    print(f"\n>>> Dashboard URL: http://{WEB_CONFIG['host']}:{WEB_CONFIG['port']}/ <<<\n")
+    print(f"\n>>> Dashboard URL: http://{WEB_CONFIG['host']}:{WEB_CONFIG['port']}/ <<<")
+    print(">>> Commands: Push = Takeoff/Land, Left/Right Fist = Rotation <<<")
+    print(f">>> Rotation commands sent every {HEADING_CONTROL['command_interval']}s when flying <<<\n")
     
     try:
         socketio.run(app, host=WEB_CONFIG['host'], port=WEB_CONFIG['port'], debug=WEB_CONFIG['debug'])
