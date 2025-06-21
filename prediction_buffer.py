@@ -20,7 +20,7 @@ class PredictionBuffer:
         
         # Separate buffers for each model
         self.prediction_buffers = {
-            "3_class": deque(maxlen=self.history_size),
+            "4_class": deque(maxlen=self.history_size),
             "8_class": deque(maxlen=self.history_size)
         }
         
