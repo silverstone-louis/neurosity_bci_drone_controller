@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 drone_controller.py - Tello Drone Controller
-Now with support for both discrete (JSON) and continuous (RC) commands.
+Updated to handle heading-based rotation commands.
 NOTE: This script is intended for Python 2.7.
 """
 
@@ -98,22 +98,7 @@ class DroneController(object):
         """Check if enough time has passed for discrete commands"""
         return (time.time() - self.last_command_time) >= COMMAND_INTERVAL
 
-    def execute_rc_command(self, command_string):
-        """
-        Executes a continuous RC command. These commands are not rate-limited
-        and are passed directly to the drone.
-        """
-        if self.is_flying:
-            logger.debug("Executing RC command: %s", command_string)
-            if not self.test_mode and self.tello:
-                # We don't wait for a response on RC commands to maintain high throughput
-                self.tello.send_command(command_string, wait_for_response=False)
-            return True
-        else:
-            logger.warning("Ignoring RC command - drone not flying.")
-            return False
-
-    def execute_discrete_command(self, command, source_class="", source_model="", confidence=0.0, **kwargs):
+    def execute_discrete_command(self, command, source_class="", source_model="", confidence=0.0, degrees=None, **kwargs):
         """Execute a discrete drone command safely"""
         if not self.can_send_command():
             logger.debug("Discrete command rate limited, skipping: %s", command)
@@ -145,19 +130,39 @@ class DroneController(object):
             else:
                 logger.warning("Not flying, ignoring land")
 
+        # Handle new heading-based rotation commands
+        elif command == "cw" and self.is_flying:
+            # Clockwise rotation with specified degrees
+            rotation_degrees = degrees if degrees else 45
+            result = "ok" if self.test_mode else self.tello.send_command("cw %d" % rotation_degrees)
+            if result == "ok":
+                success = True
+                self.rotation_angle = (self.rotation_angle + rotation_degrees) % 360
+                logger.info("Rotated RIGHT %d degrees (heading control)", rotation_degrees)
+                
+        elif command == "ccw" and self.is_flying:
+            # Counter-clockwise rotation with specified degrees
+            rotation_degrees = degrees if degrees else 45
+            result = "ok" if self.test_mode else self.tello.send_command("ccw %d" % rotation_degrees)
+            if result == "ok":
+                success = True
+                self.rotation_angle = (self.rotation_angle - rotation_degrees) % 360
+                logger.info("Rotated LEFT %d degrees (heading control)", rotation_degrees)
+
+        # Legacy rotation commands (for manual control)
         elif command == "rotate_left" and self.is_flying:
             result = "ok" if self.test_mode else self.tello.send_command("ccw 45")
             if result == "ok":
                 success = True
                 self.rotation_angle = (self.rotation_angle - 45) % 360
-                logger.info("Rotated LEFT 45°")
+                logger.info("Rotated LEFT 45 degrees (manual)")
 
         elif command == "rotate_right" and self.is_flying:
             result = "ok" if self.test_mode else self.tello.send_command("cw 45")
             if result == "ok":
                 success = True
                 self.rotation_angle = (self.rotation_angle + 45) % 360
-                logger.info("Rotated RIGHT 45°")
+                logger.info("Rotated RIGHT 45 degrees (manual)")
         
         elif command == "emergency":
             logger.warning("EMERGENCY STOP")
@@ -175,7 +180,7 @@ class DroneController(object):
             success = True
             
         else:
-            if command in ["forward", "back", "left", "right", "up", "down"] and not self.is_flying:
+            if command in ["forward", "back", "left", "right", "up", "down", "cw", "ccw"] and not self.is_flying:
                 logger.warning("Cannot execute movement command - drone not flying")
             else:
                 logger.warning("Unknown discrete command: %s", command)
@@ -204,7 +209,7 @@ class DroneController(object):
         logger.info("==================")
     
     def receive_commands(self):
-        """Thread to receive UDP commands for both discrete and continuous control"""
+        """Thread to receive UDP commands"""
         logger.info("Command receiver thread started")
         
         while self.running:
@@ -212,21 +217,15 @@ class DroneController(object):
                 data, addr = self.udp_socket.recvfrom(BUFFER_SIZE)
                 command_string = data.strip() # Remove leading/trailing whitespace
 
-                # --- MODIFICATION: Handle both RC and JSON commands ---
-                if command_string.startswith("rc "):
-                    # This is a continuous control command
-                    self.execute_rc_command(command_string)
-                else:
-                    # This is a discrete JSON command
-                    try:
-                        command_data = json.loads(command_string)
-                        command = command_data.get("command")
-                        if command:
-                            self.execute_discrete_command(**command_data)
-                            
-                    except ValueError:
-                        logger.error("Invalid JSON received: %s", command_string[:60])
-                # --- END MODIFICATION ---
+                # Parse JSON command
+                try:
+                    command_data = json.loads(command_string)
+                    command = command_data.get("command")
+                    if command:
+                        self.execute_discrete_command(**command_data)
+                        
+                except ValueError:
+                    logger.error("Invalid JSON received: %s", command_string[:60])
                         
             except socket.timeout:
                 continue
@@ -246,7 +245,7 @@ class DroneController(object):
     def run(self):
         """Main run method"""
         print("=" * 60)
-        print("DRONE CONTROLLER - DUAL MODE (DISCRETE/CONTINUOUS)")
+        print("DRONE CONTROLLER - HEADING CONTROL MODE")
         print("=" * 60)
         
         if not self.initialize_drone() or not self.setup_udp_receiver():
@@ -258,7 +257,7 @@ class DroneController(object):
         
         print("\nDrone controller ready!")
         print("Waiting for commands on %s:%d" % (UDP_IP, UDP_PORT))
-        print("Accepts both JSON (discrete) and 'rc ...' (continuous) commands.")
+        print("Accepts heading-based rotation commands (cw/ccw with degrees)")
         print("\nPress Ctrl+C to stop\n")
         
         try:
