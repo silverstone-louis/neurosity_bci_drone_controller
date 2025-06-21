@@ -29,7 +29,7 @@ CONFIDENCE_THRESHOLDS = {
     "Both_Fists": 0.3,
     
     # For Push command
-    "Push": 0.6,  # Takeoff/land threshold
+    "Push": 0.5,  # Takeoff/land threshold
 }
 
 # Push command cooldown
