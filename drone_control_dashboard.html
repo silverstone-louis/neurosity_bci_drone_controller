@@ -51,7 +51,7 @@
         .container {
             flex: 1;
             padding: 2rem;
-            max-width: 1600px;
+            max-width: 1800px;
             margin: 0 auto;
             width: 100%;
         }
@@ -60,6 +60,13 @@
         .main-grid {
             display: grid;
             grid-template-columns: 1fr 1fr;
+            gap: 2rem;
+            margin-bottom: 2rem;
+        }
+        
+        .video-grid {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
             gap: 2rem;
             margin-bottom: 2rem;
         }
@@ -90,6 +97,76 @@
             background: #333;
             border-radius: 4px;
             color: #aaa;
+        }
+        
+        /* Video Display */
+        .video-panel {
+            background: #0f0f0f;
+            border: 2px solid #333;
+            border-radius: 8px;
+            overflow: hidden;
+            position: relative;
+        }
+        
+        .video-container {
+            position: relative;
+            width: 100%;
+            padding-bottom: 56.25%; /* 16:9 aspect ratio */
+            background: #000;
+        }
+        
+        #videoDisplay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+        
+        .video-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            padding: 1rem;
+            background: linear-gradient(to bottom, rgba(0,0,0,0.8), transparent);
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            pointer-events: none;
+        }
+        
+        .video-status {
+            display: flex;
+            gap: 1rem;
+            font-size: 0.85rem;
+        }
+        
+        .video-stat {
+            background: rgba(0,0,0,0.5);
+            padding: 0.3rem 0.6rem;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .video-stat.connected {
+            border: 1px solid #00ff41;
+        }
+        
+        .video-stat.disconnected {
+            border: 1px solid #ff4141;
+        }
+        
+        .no-video-message {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            color: #666;
         }
         
         /* Model Specific Border Colors */
@@ -421,6 +498,12 @@
         }
         
         /* Responsive Adjustments */
+        @media (max-width: 1400px) {
+            .video-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+        
         @media (max-width: 1200px) {
             .main-grid, .bottom-grid {
                 grid-template-columns: 1fr;
@@ -448,10 +531,59 @@
             <span>4-Class: Rotation/Fwd</span>
             <span>|</span>
             <span>8-Class: Actions</span>
+            <span>|</span>
+            <span id="videoStatusText">Video: Disconnected</span>
         </div>
     </header>
     
     <div class="container">
+        <!-- Video Feed Section -->
+        <div class="video-grid">
+            <div class="video-panel">
+                <div class="video-container">
+                    <img id="videoDisplay" style="display: none;" />
+                    <div id="noVideoMessage" class="no-video-message">
+                        <h3>No Video Signal</h3>
+                        <p>Waiting for drone video stream...</p>
+                    </div>
+                    <div class="video-overlay">
+                        <div class="video-status">
+                            <div id="videoFPS" class="video-stat">
+                                FPS: <span id="videoFPSValue">0</span>
+                            </div>
+                            <div id="videoFrames" class="video-stat">
+                                Frames: <span id="videoFrameCount">0</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="panel">
+                <h2>Video Stats</h2>
+                <div class="status-grid">
+                    <div class="status-item">
+                        <div class="status-label">Stream Status</div>
+                        <div id="videoStreamStatus" class="status-value disconnected">Disconnected</div>
+                    </div>
+                    <div class="status-item">
+                        <div class="status-label">Current FPS</div>
+                        <div id="videoCurrentFPS" class="status-value">0</div>
+                    </div>
+                    <div class="status-item">
+                        <div class="status-label">Latency</div>
+                        <div id="videoLatency" class="status-value">0ms</div>
+                    </div>
+                </div>
+                
+                <div style="margin-top: 1rem;">
+                    <button class="btn" onclick="saveSnapshot()">
+                        📸 Save Snapshot
+                    </button>
+                </div>
+            </div>
+        </div>
+        
         <!-- Debug Panel -->
         <div class="debug-panel">
             <h3 style="color: #ff6b00; margin-bottom: 0.5rem;">System Debug Info</h3>
@@ -460,6 +592,7 @@
                 <div>Heading Control: <span id="debugHeadingControl">Inactive</span></div>
                 <div>Manual Override: <span id="debugManualOverride">OFF</span></div>
                 <div>Last State Change: <span id="debugLastStateChange">None</span></div>
+                <div>Video Stream: <span id="debugVideoStream">Inactive</span></div>
             </div>
         </div>
         
@@ -650,6 +783,12 @@
         let droneState = 'grounded';
         let manualOverride = false;
         
+        // Video state
+        let videoActive = false;
+        let lastVideoFrame = 0;
+        let videoFPSCounter = 0;
+        let videoFPSTimer = null;
+        
         // DOM elements
         const elements = {
             mainIndicator: document.getElementById('mainConnectionIndicator'),
@@ -659,6 +798,17 @@
             commandHistory: document.getElementById('commandHistory'),
             takeoffBtn: document.getElementById('takeoffBtn'),
             landBtn: document.getElementById('landBtn'),
+            
+            // Video elements
+            videoDisplay: document.getElementById('videoDisplay'),
+            noVideoMessage: document.getElementById('noVideoMessage'),
+            videoStatusText: document.getElementById('videoStatusText'),
+            videoStreamStatus: document.getElementById('videoStreamStatus'),
+            videoFPSValue: document.getElementById('videoFPSValue'),
+            videoCurrentFPS: document.getElementById('videoCurrentFPS'),
+            videoFrameCount: document.getElementById('videoFrameCount'),
+            videoLatency: document.getElementById('videoLatency'),
+            debugVideoStream: document.getElementById('debugVideoStream'),
             
             // Debug elements
             debugDroneState: document.getElementById('debugDroneState'),
@@ -698,10 +848,10 @@
         // Updated thresholds from config
         const thresholds = {
             'Rest': 0.50,
-            'Left_Fist': 0.30,  // Updated from config
-            'Right_Fist': 0.30, // Updated from config
-            'Both_Fists': 0.30, // Updated from config
-            'Push': 0.60,       // Updated from config
+            'Left_Fist': 0.30,
+            'Right_Fist': 0.30,
+            'Both_Fists': 0.30,
+            'Push': 0.60,
         };
         
         // Connect to WebSocket
@@ -713,6 +863,7 @@
                 elements.mainIndicator.classList.add('connected');
                 elements.mainIndicator.classList.remove('disconnected');
                 socket.emit('request_status');
+                startFPSCounter();
             });
             
             socket.on('disconnect', () => {
@@ -720,6 +871,7 @@
                 elements.mainIndicator.classList.remove('connected');
                 elements.mainIndicator.classList.add('disconnected');
                 updateStatus('disconnected');
+                stopFPSCounter();
             });
             
             socket.on('connection_status', updateConnectionStatus);
@@ -733,6 +885,91 @@
                 manualOverride = data.active;
                 updateManualOverrideDisplay();
             });
+            socket.on('video_frame', handleVideoFrame);
+        }
+        
+        function handleVideoFrame(data) {
+            if (!data || !data.frame) return;
+            
+            // Update video display
+            const imageUrl = 'data:image/jpeg;base64,' + data.frame;
+            elements.videoDisplay.src = imageUrl;
+            elements.videoDisplay.style.display = 'block';
+            elements.noVideoMessage.style.display = 'none';
+            
+            // Update stats
+            videoActive = true;
+            lastVideoFrame = Date.now();
+            videoFPSCounter++;
+            
+            if (data.frame_count) {
+                elements.videoFrameCount.textContent = data.frame_count;
+            }
+            
+            if (data.fps) {
+                elements.videoFPSValue.textContent = data.fps.toFixed(1);
+            }
+            
+            // Calculate latency
+            if (data.timestamp) {
+                const latency = Date.now() - data.timestamp;
+                elements.videoLatency.textContent = latency + 'ms';
+            }
+            
+            updateVideoStatus(true);
+        }
+        
+        function updateVideoStatus(active) {
+            if (active) {
+                elements.videoStatusText.textContent = 'Video: Connected';
+                elements.videoStreamStatus.textContent = 'Connected';
+                elements.videoStreamStatus.classList.add('connected');
+                elements.videoStreamStatus.classList.remove('disconnected');
+                elements.debugVideoStream.textContent = 'Active';
+                elements.debugVideoStream.style.color = '#00ff41';
+            } else {
+                elements.videoStatusText.textContent = 'Video: Disconnected';
+                elements.videoStreamStatus.textContent = 'Disconnected';
+                elements.videoStreamStatus.classList.remove('connected');
+                elements.videoStreamStatus.classList.add('disconnected');
+                elements.debugVideoStream.textContent = 'Inactive';
+                elements.debugVideoStream.style.color = '#666';
+                elements.videoDisplay.style.display = 'none';
+                elements.noVideoMessage.style.display = 'block';
+            }
+        }
+        
+        function startFPSCounter() {
+            videoFPSTimer = setInterval(() => {
+                elements.videoCurrentFPS.textContent = videoFPSCounter;
+                videoFPSCounter = 0;
+                
+                // Check if video is stale
+                if (videoActive && (Date.now() - lastVideoFrame) > 2000) {
+                    videoActive = false;
+                    updateVideoStatus(false);
+                }
+            }, 1000);
+        }
+        
+        function stopFPSCounter() {
+            if (videoFPSTimer) {
+                clearInterval(videoFPSTimer);
+                videoFPSTimer = null;
+            }
+        }
+        
+        function saveSnapshot() {
+            if (!elements.videoDisplay.src) {
+                alert('No video to capture');
+                return;
+            }
+            
+            // Create a link to download the image
+            const link = document.createElement('a');
+            link.download = 'drone_snapshot_' + new Date().toISOString() + '.jpg';
+            link.href = elements.videoDisplay.src;
+            link.click();
         }
         
         function updateConnectionStatus(data) {
@@ -772,6 +1009,14 @@
                     
                     elements.debugHeadingControl.textContent = hc.enabled ? 'Active' : 'Disabled';
                     elements.debugHeadingControl.style.color = hc.enabled ? '#00ff41' : '#666';
+                }
+            }
+            
+            // Update video stats if available
+            if (data.video_stats) {
+                if (data.video_stats.frames_received > 0) {
+                    elements.debugVideoStream.textContent = 'Receiving';
+                    elements.debugVideoStream.style.color = '#00ff41';
                 }
             }
             
@@ -969,6 +1214,7 @@
             if (status === 'disconnected') {
                 updateStatusElement(elements.neurosityStatus, 'Disconnected', false);
                 updateStatusElement(elements.modelStatus, 'Not Loaded', false);
+                updateVideoStatus(false);
             }
         }
         
