@@ -1,11 +1,11 @@
 # config.py
-# Simplified configuration for heading-based control
+# Simplified configuration with spike-based control
 
 import os
 
-# Model paths
+# Model paths - 4-class model
 MODELS = {
-    "4_class": {  # Actually 4 classes but keeping the key for compatibility
+    "4_class": {
         "model_path": r"C:\Users\silve\Tello-Python\neurosity_tello\optuna_hyperparameter_xgboost2\4_class_eeg_xgb_model_optuna_20250619_190434.json",
         "scaler_path": r"C:\Users\silve\Tello-Python\neurosity_tello\optuna_hyperparameter_xgboost2\4_class_eeg_scaler_optuna_20250619_190434.pkl",
         "num_classes": 4,
@@ -21,45 +21,58 @@ MODELS = {
     }
 }
 
-# Confidence thresholds - SIMPLIFIED
+# Confidence thresholds
 CONFIDENCE_THRESHOLDS = {
-    # For heading control (not used directly anymore)
+    # These are base thresholds - spike detection will be primary mechanism
     "Left_Fist": 0.3,
     "Right_Fist": 0.3,
     "Both_Fists": 0.3,
-    
-    # For Push command
-    "Push": 0.5,  # Takeoff/land threshold
+    "Push": 0.6,  # For takeoff/land
+}
+
+# Spike Detection Configuration
+SPIKE_DETECTION = {
+    "enabled": True,
+    "buffer_size": 30,  # Number of samples for rolling statistics
+    "spike_threshold_std": 1.5,  # Spike when probability > mean + (threshold * std_dev)
+    "min_spike_magnitude": 0.1,  # Minimum probability to consider
+    # MODIFICATION: Increased decay rate for smoother, less abrupt control changes.
+    # A higher value means the spike's influence fades more slowly.
+    "spike_decay_rate": 0.95,  # Original: 0.85
+    "spike_cooldown": 0.5,  # Seconds between spikes for same class
+}
+
+# Triadic Control Configuration
+TRIADIC_CONTROL = {
+    "enabled": True,
+    "update_rate_hz": 15,  # Command update frequency
+    "smoothing_factor": 0.7,  # For output smoothing
+    "dead_zone": 0.1,  # Minimum control signal to act on
+    # MODIFICATION: Reduced max rotation speed for more manageable control.
+    "max_rotation_speed": 45,  # Original: 90
+    # NOTE: max_forward_speed is currently disabled in triadic_controller.py for stability testing.
+    "max_forward_speed": 50,  # Maximum forward speed
+    "scale_exponent": 1.3,  # Non-linear scaling
 }
 
 # Push command cooldown
 PUSH_COMMAND_COOLDOWN = 3.0
 
-# SIMPLIFIED Command mappings (most handled by heading controller now)
+# Command mappings (simplified)
 COMMAND_MAPPINGS = {
-    # Push is the only discrete command we use
     "Push": {
         "drone_command": "toggle_flight",
         "enabled": True,
         "description": "Takeoff if grounded, Land if flying"
-    },
-    
-    # These are disabled - handled by heading controller
-    "Left_Fist": {"drone_command": "rotate_left", "enabled": False, "description": "Handled by heading control"},
-    "Right_Fist": {"drone_command": "rotate_right", "enabled": False, "description": "Handled by heading control"},
-    
-    # Future commands (all disabled)
-    "Pull": {"drone_command": "back", "enabled": False, "description": "Move backward 50cm"},
-    "Lift": {"drone_command": "up", "enabled": False, "description": "Ascend 50cm"},
-    "Drop": {"drone_command": "down", "enabled": False, "description": "Descend 50cm"},
+    }
 }
 
 # Command restrictions by drone state
 COMMAND_RESTRICTIONS = {
-    "grounded": ["forward", "back", "left", "right", "up", "down", "rotate_left", "rotate_right", "cw", "ccw"],
-    "taking_off": ["forward", "back", "left", "right", "up", "down", "rotate_left", "rotate_right", "land", "cw", "ccw"],
-    "landing": ["forward", "back", "left", "right", "up", "down", "rotate_left", "rotate_right", "takeoff", "cw", "ccw"],
-    "flying": []  # All commands allowed
+    "grounded": ["rc", "forward", "back", "left", "right", "up", "down"],
+    "taking_off": ["rc", "takeoff", "land"],
+    "landing": ["rc", "takeoff", "land"],
+    "flying": []
 }
 
 # Command cooldowns
@@ -69,15 +82,11 @@ COMMAND_COOLDOWNS = {
     "default": 0.5
 }
 
-# Command priority (for conflict resolution)
+# Command priority
 COMMAND_PRIORITY = {
     "emergency": 100,
     "land": 90,
-    "toggle_flight": 80,
-    "cw": 40,
-    "ccw": 40,
-    "rotate_left": 40,
-    "rotate_right": 40,
+    "takeoff": 80,
 }
 
 # EEG Processing
@@ -90,17 +99,10 @@ EEG_CONFIG = {
     "update_rate": 2  # Hz - predictions per second
 }
 
-# Prediction Buffer (not really used with heading control)
-BUFFER_CONFIG = {
-    "history_size": 50,
-    "smoothing_window": 5,
-    "jitter_threshold": 0.2,
-    "min_consistent_predictions": 3
-}
-
-# Sustained durations (not used with heading control)
-SUSTAINED_DURATIONS = {
-    "Push": 1.0,  # Only Push uses sustained detection now
+# Feature Buffer
+FEATURE_BUFFER_CONFIG = {
+    "max_length": 50,  # Maximum number of predictions to keep
+    "required_for_stats": 10  # Minimum predictions needed for statistics
 }
 
 # Safety Settings
@@ -108,7 +110,8 @@ SAFETY_CONFIG = {
     "max_flight_time": 600,
     "low_battery_threshold": 20,
     "command_timeout": 30,
-    "enable_auto_land": True
+    "enable_auto_land": True,
+    "data_timeout": 5.0  # Seconds without data before safety shutdown
 }
 
 # UDP Communication
@@ -129,23 +132,5 @@ WEB_CONFIG = {
 LOGGING_CONFIG = {
     "level": "INFO",
     "format": "%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    "prediction_logging": True,
-    "command_logging": True
-}
-
-# SIMPLIFIED Heading Control Configuration
-HEADING_CONTROL = {
-    "enabled": True,
-    "command_interval": 0.5,    # Send rotation commands every 500ms
-    "dead_zone": 0.25,          # Ignore control values below this
-    "smoothing_factor": 0.3,    # Lower = more responsive
-    "rotation_speeds": {
-        "fast": 20,             # Degrees for strong signal
-        "slow": 10              # Degrees for weak signal
-    }
-}
-
-# DEPRECATED - Continuous control not used
-CONTINUOUS_CONTROL = {
-    "enabled": False
+    "detailed_timing": False  # Set True for detailed timing logs
 }
