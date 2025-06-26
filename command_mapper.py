@@ -1,5 +1,5 @@
 # command_mapper.py
-# Maps model predictions to drone commands with conflict resolution
+# Simplified command mapper for drone state management
 
 import logging
 import time
@@ -11,7 +11,7 @@ from config import (
 logger = logging.getLogger(__name__)
 
 class CommandMapper:
-    """Maps BCI predictions to drone commands with safety and priority handling"""
+    """Manages drone state and command restrictions"""
     
     def __init__(self):
         self.drone_state = "grounded"  # grounded, taking_off, flying, landing
@@ -28,11 +28,11 @@ class CommandMapper:
         
     def is_command_allowed(self, command, current_time):
         """Check if a command is allowed based on current state and cooldowns"""
-        # Continuous control bypasses cooldowns
-        if command == "continuous_control":
+        # RC commands are always allowed when flying
+        if command == "rc":
             return self.drone_state == "flying"
         
-        # Check cooldown
+        # Check cooldown for other commands
         if current_time < self.cooldown_until:
             logger.debug(f"Command {command} blocked by cooldown "
                         f"({self.cooldown_until - current_time:.1f}s remaining)")
@@ -53,104 +53,6 @@ class CommandMapper:
         self.cooldown_until = current_time + cooldown
         logger.debug(f"Applied {cooldown}s cooldown for command {command}")
     
-    def map_predictions_to_commands(self, dual_predictions, current_time):
-        """Map dual model predictions to drone commands"""
-        candidates = []
-        
-        # Process each model's predictions
-        for model_name, prediction in dual_predictions.items():
-            if model_name in ["timestamp", "total_inference_time"]:
-                continue
-                
-            predicted_class = prediction["predicted_class"]
-            confidence = prediction["confidence"]
-            
-            # Skip Rest predictions
-            if predicted_class == "Rest":
-                continue
-                
-            # Check confidence threshold for this specific class
-            threshold = CONFIDENCE_THRESHOLDS.get(predicted_class, 0.7)
-            if confidence < threshold:
-                logger.debug(f"{predicted_class} confidence {confidence:.3f} "
-                           f"below threshold {threshold}")
-                continue
-            
-            # Check if this class has a mapping
-            if predicted_class not in COMMAND_MAPPINGS:
-                logger.warning(f"No command mapping for class {predicted_class}")
-                continue
-                
-            mapping = COMMAND_MAPPINGS[predicted_class]
-            
-            # Check if this command is enabled
-            if not mapping.get("enabled", False):
-                logger.debug(f"Command for {predicted_class} is disabled")
-                continue
-            
-            # Get the drone command
-            drone_command = mapping["drone_command"]
-            
-            # Special handling for toggle_flight
-            if drone_command == "toggle_flight":
-                if self.drone_state == "grounded":
-                    drone_command = "takeoff"
-                elif self.drone_state == "flying":
-                    drone_command = "land"
-                else:
-                    logger.debug(f"Cannot toggle flight in state {self.drone_state}")
-                    continue
-            
-            # Check if command is allowed
-            if not self.is_command_allowed(drone_command, current_time):
-                continue
-            
-            # Add to candidates with priority
-            priority = COMMAND_PRIORITY.get(drone_command, 50)
-            candidates.append({
-                "command": drone_command,
-                "source_model": model_name,
-                "source_class": predicted_class,
-                "confidence": confidence,
-                "priority": priority,
-                "description": mapping["description"]
-            })
-        
-        # Select best command based on priority and confidence
-        if not candidates:
-            return None
-            
-        # Sort by priority (descending) then confidence (descending)
-        candidates.sort(key=lambda x: (x["priority"], x["confidence"]), reverse=True)
-        selected = candidates[0]
-        
-        # Log decision
-        logger.info(f"Selected command: {selected['command']} "
-                   f"from {selected['source_model']}/{selected['source_class']} "
-                   f"(conf: {selected['confidence']:.3f}, pri: {selected['priority']})")
-        
-        if len(candidates) > 1:
-            logger.debug(f"Other candidates: {[c['command'] for c in candidates[1:]]}")
-        
-        # Update state and apply cooldown
-        self.last_command = selected["command"]
-        self.last_command_time = current_time
-        self.apply_cooldown(selected["command"], current_time)
-        
-        # Update drone state based on command
-        if selected["command"] == "takeoff":
-            self.update_drone_state("taking_off")
-        elif selected["command"] == "land":
-            self.update_drone_state("landing")
-        
-        # Add to history
-        self.command_history.append({
-            "command": selected,
-            "timestamp": current_time
-        })
-        
-        return selected
-    
     def handle_command_completion(self, command, success):
         """Handle notification that a command has completed"""
         if command == "takeoff" and success:
@@ -164,19 +66,6 @@ class CommandMapper:
             elif self.drone_state == "landing":
                 self.update_drone_state("flying")
     
-    def get_active_mappings(self):
-        """Get list of currently active command mappings"""
-        active = []
-        for class_name, mapping in COMMAND_MAPPINGS.items():
-            if mapping.get("enabled", False):
-                active.append({
-                    "class": class_name,
-                    "command": mapping["drone_command"],
-                    "description": mapping["description"],
-                    "threshold": CONFIDENCE_THRESHOLDS.get(class_name, 0.7)
-                })
-        return active
-    
     def get_state_info(self):
         """Get current mapper state information"""
         current_time = time.time()
@@ -185,7 +74,5 @@ class CommandMapper:
             "last_command": self.last_command,
             "cooldown_active": current_time < self.cooldown_until,
             "cooldown_remaining": max(0, self.cooldown_until - current_time),
-            "active_mappings": len([m for m in COMMAND_MAPPINGS.values() 
-                                   if m.get("enabled", False)]),
             "command_count": len(self.command_history)
         }
