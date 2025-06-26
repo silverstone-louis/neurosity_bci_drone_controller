@@ -3,226 +3,176 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dual Model BCI Drone Control</title>
+    <title>BCI Drone Control - Spike Detection</title>
     <script src="https://cdn.socket.io/4.6.0/socket.io.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
     <style>
-        /* General Reset */
+        :root {
+            --bg-color: #0f0f0f;
+            --panel-bg: #1a1a1a;
+            --border-color: #333;
+            --text-color: #e0e0e0;
+            --primary-color: #4a9eff;
+            --success-color: #00ff88;
+            --danger-color: #ff4444;
+            --warning-color: #ffaa00;
+            --spike-color: #ff00ff;
+        }
+        
         * {
             box-sizing: border-box;
             margin: 0;
             padding: 0;
         }
         
-        /* Body Styling */
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: #0a0a0a;
-            color: #ffffff;
+            background: var(--bg-color);
+            color: var(--text-color);
             line-height: 1.6;
-            min-height: 100vh;
-            display: flex;
-            flex-direction: column;
         }
         
-        /* Header Styling */
+        .container {
+            max-width: 1600px;
+            margin: 0 auto;
+            padding: 1rem;
+        }
+        
         header {
-            background: #1a1a1a;
-            padding: 1rem 2rem;
-            border-bottom: 2px solid #333;
+            background: var(--panel-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 1.5rem;
+            margin-bottom: 2rem;
             display: flex;
             justify-content: space-between;
             align-items: center;
         }
         
         h1 {
-            font-size: 1.8rem;
+            font-size: 2rem;
             font-weight: 300;
-            letter-spacing: 0.05em;
+            color: var(--primary-color);
         }
         
-        .header-info {
+        .status-indicator {
             display: flex;
-            gap: 2rem;
+            align-items: center;
+            gap: 1rem;
             font-size: 0.9rem;
-            color: #888;
         }
         
-        /* Main Container */
-        .container {
-            flex: 1;
-            padding: 2rem;
-            max-width: 1800px;
-            margin: 0 auto;
-            width: 100%;
+        .status-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: var(--danger-color);
         }
         
-        /* Grid Layouts */
-        .main-grid {
+        .status-dot.connected {
+            background: var(--success-color);
+            box-shadow: 0 0 10px var(--success-color);
+        }
+        
+        .grid {
             display: grid;
             grid-template-columns: 1fr 1fr;
-            gap: 2rem;
-            margin-bottom: 2rem;
+            gap: 1.5rem;
+            margin-bottom: 1.5rem;
         }
         
-        .video-grid {
-            display: grid;
-            grid-template-columns: 2fr 1fr;
-            gap: 2rem;
-            margin-bottom: 2rem;
-        }
-        
-        /* Panel Styling */
         .panel {
-            background: #1a1a1a;
-            border: 1px solid #333;
+            background: var(--panel-bg);
+            border: 1px solid var(--border-color);
             border-radius: 8px;
             padding: 1.5rem;
             position: relative;
-            overflow: hidden;
         }
         
         .panel h2 {
             font-size: 1.2rem;
             margin-bottom: 1rem;
-            color: #00ff41;
+            color: var(--primary-color);
             font-weight: 400;
-            display: flex;
-            align-items: center;
-            gap: 1rem;
         }
         
-        .model-indicator {
-            font-size: 0.8rem;
-            padding: 0.2rem 0.6rem;
-            background: #333;
-            border-radius: 4px;
-            color: #aaa;
-        }
-        
-        /* Video Display */
-        .video-panel {
-            background: #0f0f0f;
-            border: 2px solid #333;
-            border-radius: 8px;
-            overflow: hidden;
+        /* Spike Visualization */
+        .spike-viz {
+            height: 200px;
+            margin-bottom: 1rem;
             position: relative;
         }
         
-        .video-container {
-            position: relative;
-            width: 100%;
-            padding-bottom: 56.25%; /* 16:9 aspect ratio */
-            background: #000;
-        }
-        
-        #videoDisplay {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            object-fit: contain;
-        }
-        
-        .video-overlay {
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            padding: 1rem;
-            background: linear-gradient(to bottom, rgba(0,0,0,0.8), transparent);
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-start;
-            pointer-events: none;
-        }
-        
-        .video-status {
-            display: flex;
+        .spike-stats {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
             gap: 1rem;
-            font-size: 0.85rem;
-        }
-        
-        .video-stat {
-            background: rgba(0,0,0,0.5);
-            padding: 0.3rem 0.6rem;
-            border-radius: 4px;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-        }
-        
-        .video-stat.connected {
-            border: 1px solid #00ff41;
-        }
-        
-        .video-stat.disconnected {
-            border: 1px solid #ff4141;
-        }
-        
-        .no-video-message {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            text-align: center;
-            color: #666;
-        }
-        
-        /* Model Specific Border Colors */
-        .model-4class { border-left: 3px solid #00a8ff; }
-        .model-8class { border-left: 3px solid #ff6b00; }
-        
-        /* Prediction Bars */
-        .predictions {
             margin-top: 1rem;
         }
         
-        .prediction-bar {
+        .spike-stat {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 4px;
+            padding: 0.75rem;
+            text-align: center;
+        }
+        
+        .spike-stat .label {
+            font-size: 0.8rem;
+            color: #888;
+            text-transform: uppercase;
+        }
+        
+        .spike-stat .value {
+            font-size: 1.5rem;
+            font-weight: 600;
+            margin-top: 0.25rem;
+        }
+        
+        /* Probability Bars */
+        .prob-container {
             margin-bottom: 1rem;
         }
         
-        .prediction-label {
+        .prob-bar {
+            margin-bottom: 1rem;
+        }
+        
+        .prob-label {
             display: flex;
             justify-content: space-between;
             margin-bottom: 0.3rem;
             font-size: 0.9rem;
         }
         
-        .prediction-info {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-        }
-        
-        .threshold-indicator {
-            font-size: 0.7rem;
-            color: #666;
-        }
-        
-        .prediction-track {
+        .prob-track {
             height: 24px;
-            background: #0f0f0f;
+            background: rgba(255, 255, 255, 0.1);
             border-radius: 12px;
             overflow: hidden;
             position: relative;
-            border: 1px solid #2a2a2a;
         }
         
-        .prediction-fill {
+        .prob-fill {
             height: 100%;
-            background: linear-gradient(90deg, #00ff41, #00cc33);
+            background: var(--primary-color);
             transition: width 0.3s ease;
             position: relative;
         }
         
-        .prediction-fill.active {
-            background: linear-gradient(90deg, #ff6b00, #ff4500);
-            box-shadow: 0 0 10px rgba(255, 107, 0, 0.5);
+        .prob-fill.spike-active {
+            background: var(--spike-color);
+            box-shadow: 0 0 20px var(--spike-color);
         }
         
-        .prediction-fill.below-threshold {
-            background: linear-gradient(90deg, #444, #666);
+        .mean-line {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 2px;
+            background: var(--warning-color);
+            opacity: 0.8;
+            transition: left 0.3s ease;
         }
         
         .threshold-line {
@@ -230,73 +180,79 @@
             top: 0;
             bottom: 0;
             width: 2px;
-            background: #ff0;
+            background: var(--spike-color);
             opacity: 0.5;
-            pointer-events: none;
+            transition: left 0.3s ease;
         }
         
-        /* Status Grid */
-        .status-grid {
+        /* Control Visualization */
+        .control-viz {
             display: grid;
-            grid-template-columns: repeat(3, 1fr);
+            grid-template-columns: 1fr 1fr;
             gap: 1rem;
+            margin-top: 1rem;
         }
         
-        .status-item {
-            background: #0f0f0f;
-            padding: 0.8rem;
-            border-radius: 4px;
-            border: 1px solid #2a2a2a;
-        }
-        
-        .status-label {
-            font-size: 0.8rem;
-            color: #888;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-        }
-        
-        .status-value {
-            font-size: 1.1rem;
-            margin-top: 0.2rem;
-            font-weight: 500;
-        }
-        
-        .status-value.connected { color: #00ff41; }
-        .status-value.disconnected { color: #ff4141; }
-        .status-value.warning { color: #ffaa00; }
-        
-        /* Command Flow Visualizer */
-        .command-flow {
-            display: flex;
-            align-items: center;
-            justify-content: space-around;
-            padding: 1rem;
-            background: #0f0f0f;
+        .control-meter {
+            background: rgba(255, 255, 255, 0.05);
             border-radius: 8px;
-            margin: 1rem 0;
-        }
-        
-        .flow-item {
+            padding: 1rem;
             text-align: center;
-            padding: 0.5rem;
         }
         
-        .flow-arrow {
-            color: #666;
-            font-size: 1.5rem;
+        .control-meter .label {
+            font-size: 0.9rem;
+            color: #888;
+            margin-bottom: 0.5rem;
         }
         
-        .active-command {
-            padding: 0.5rem 1rem;
-            background: #ff6b00;
-            color: #000;
-            border-radius: 4px;
+        .control-meter .value {
+            font-size: 2rem;
             font-weight: 600;
         }
         
-        /* Drone Controls */
-        .drone-controls {
+        .control-meter .bar {
+            height: 8px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 4px;
+            margin-top: 0.5rem;
+            overflow: hidden;
+        }
+        
+        .control-meter .bar-fill {
+            height: 100%;
+            background: var(--primary-color);
+            transition: width 0.1s ease;
+        }
+        
+        /* Drone State */
+        .drone-state {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 8px;
+            padding: 1.5rem;
+            text-align: center;
+            margin-bottom: 1rem;
+        }
+        
+        .drone-state .state-label {
+            font-size: 0.9rem;
+            color: #888;
+            text-transform: uppercase;
+        }
+        
+        .drone-state .state-value {
+            font-size: 2rem;
+            font-weight: 600;
+            margin-top: 0.5rem;
+        }
+        
+        .drone-state.grounded .state-value { color: #888; }
+        .drone-state.flying .state-value { color: var(--success-color); }
+        .drone-state.taking_off .state-value,
+        .drone-state.landing .state-value { color: var(--warning-color); }
+        
+        /* Controls */
+        .controls {
             display: grid;
             grid-template-columns: repeat(3, 1fr);
             gap: 1rem;
@@ -304,46 +260,19 @@
         }
         
         .btn {
-            background: #2a2a2a;
-            border: 1px solid #444;
-            color: #fff;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid var(--border-color);
+            color: var(--text-color);
             padding: 1rem;
             border-radius: 4px;
             cursor: pointer;
             font-size: 1rem;
             transition: all 0.3s ease;
-            text-align: center;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
         }
         
         .btn:hover:not(:disabled) {
-            background: #3a3a3a;
-            border-color: #666;
-        }
-        
-        .btn:active:not(:disabled) {
-            transform: scale(0.98);
-        }
-        
-        .btn.primary {
-            background: #00ff41;
-            color: #000;
-            border-color: #00ff41;
-            font-weight: 600;
-        }
-        
-        .btn.danger {
-            background: #ff4141;
-            border-color: #ff4141;
-            font-weight: 600;
-        }
-        
-        .btn.warning {
-            background: #ff6b00;
-            color: #000;
-            border-color: #ff6b00;
-            font-weight: 600;
+            background: rgba(255, 255, 255, 0.15);
+            border-color: var(--primary-color);
         }
         
         .btn:disabled {
@@ -351,135 +280,62 @@
             cursor: not-allowed;
         }
         
-        /* Command History */
-        .command-history {
-            max-height: 250px;
-            overflow-y: auto;
-            background: #0f0f0f;
-            border-radius: 4px;
-            padding: 1rem;
-            font-family: 'Courier New', monospace;
-            font-size: 0.85rem;
-            border: 1px solid #2a2a2a;
+        .btn.primary {
+            background: var(--primary-color);
+            border-color: var(--primary-color);
+            color: #000;
         }
         
-        .history-entry {
-            padding: 0.3rem 0;
-            border-bottom: 1px solid #1a1a1a;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
+        .btn.danger {
+            background: var(--danger-color);
+            border-color: var(--danger-color);
+            color: #fff;
         }
         
-        .history-entry:last-child {
-            border-bottom: none;
-        }
-        
-        .history-time {
-            color: #666;
-            font-size: 0.8rem;
-        }
-        
-        .history-command {
-            color: #00ff41;
-            font-weight: 600;
-        }
-        
-        .history-source {
-            color: #888;
-            font-size: 0.8rem;
-        }
-        
-        /* Connection Indicator Dot */
-        .connection-indicator {
-            display: inline-block;
-            width: 12px;
-            height: 12px;
-            border-radius: 50%;
-            margin-left: 0.5rem;
-            vertical-align: middle;
-        }
-        
-        .connection-indicator.connected {
-            background: #00ff41;
-            box-shadow: 0 0 10px rgba(0, 255, 65, 0.5);
-        }
-        
-        .connection-indicator.disconnected {
-            background: #ff4141;
-        }
-        
-        /* Bottom Grid Layout */
-        .bottom-grid {
+        /* Status Grid */
+        .status-grid {
             display: grid;
-            grid-template-columns: 2fr 1fr;
-            gap: 2rem;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 1rem;
         }
         
-        /* Debug Panel */
-        .debug-panel {
-            background: #0f0f0f;
-            border: 2px solid #ff6b00;
-            border-radius: 8px;
-            padding: 1rem;
-            margin-bottom: 1rem;
+        .status-item {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 4px;
+            padding: 0.75rem;
         }
         
-        .debug-info {
-            font-family: 'Courier New', monospace;
-            font-size: 0.85rem;
-            color: #ff6b00;
+        .status-item .label {
+            font-size: 0.8rem;
+            color: #888;
+            text-transform: uppercase;
         }
         
-        /* State Machine Visualization */
-        .state-diagram {
+        .status-item .value {
+            font-size: 1.1rem;
+            margin-top: 0.25rem;
+        }
+        
+        /* Toggle Switch */
+        .toggle-container {
             display: flex;
             align-items: center;
-            justify-content: center;
             gap: 1rem;
             margin: 1rem 0;
-        }
-        
-        .state-node {
-            padding: 0.5rem 1rem;
-            border: 2px solid #444;
-            border-radius: 4px;
-            font-size: 0.9rem;
-        }
-        
-        .state-node.active {
-            border-color: #00ff41;
-            background: rgba(0, 255, 65, 0.1);
-            color: #00ff41;
-        }
-        
-        .state-transition {
-            color: #666;
-        }
-        
-        /* Manual Override Toggle */
-        .override-toggle {
-            display: flex;
-            align-items: center;
-            gap: 1rem;
-            padding: 0.5rem;
-            background: #1a1a1a;
-            border-radius: 4px;
-            margin-bottom: 1rem;
         }
         
         .toggle-switch {
             position: relative;
             width: 50px;
             height: 24px;
-            background: #444;
+            background: rgba(255, 255, 255, 0.2);
             border-radius: 12px;
             cursor: pointer;
             transition: background 0.3s;
         }
         
         .toggle-switch.active {
-            background: #ff6b00;
+            background: var(--primary-color);
         }
         
         .toggle-slider {
@@ -497,281 +353,200 @@
             transform: translateX(26px);
         }
         
-        /* Responsive Adjustments */
-        @media (max-width: 1400px) {
-            .video-grid {
-                grid-template-columns: 1fr;
-            }
-        }
-        
         @media (max-width: 1200px) {
-            .main-grid, .bottom-grid {
+            .grid {
                 grid-template-columns: 1fr;
-            }
-            
-            .status-grid {
-                grid-template-columns: repeat(2, 1fr);
             }
         }
         
         @media (max-width: 768px) {
-            .drone-controls {
+            .controls {
+                grid-template-columns: 1fr;
+            }
+            .spike-stats {
                 grid-template-columns: 1fr;
             }
         }
     </style>
 </head>
 <body>
-    <header>
-        <h1>
-            Dual Model BCI Drone Control
-            <span id="mainConnectionIndicator" class="connection-indicator disconnected"></span>
-        </h1>
-        <div class="header-info">
-            <span>4-Class: Rotation/Fwd</span>
-            <span>|</span>
-            <span>8-Class: Actions</span>
-            <span>|</span>
-            <span id="videoStatusText">Video: Disconnected</span>
-        </div>
-    </header>
-    
     <div class="container">
-        <!-- Video Feed Section -->
-        <div class="video-grid">
-            <div class="video-panel">
-                <div class="video-container">
-                    <img id="videoDisplay" style="display: none;" />
-                    <div id="noVideoMessage" class="no-video-message">
-                        <h3>No Video Signal</h3>
-                        <p>Waiting for drone video stream...</p>
+        <header>
+            <h1>BCI Drone Control - Spike Detection</h1>
+            <div class="status-indicator">
+                <span id="connectionStatus">Disconnected</span>
+                <div id="statusDot" class="status-dot"></div>
+                <span id="dataStatus">No Data</span>
+            </div>
+        </header>
+        
+        <div class="grid">
+            <!-- Spike Visualization Panel -->
+            <div class="panel">
+                <h2>Spike Detection Monitor</h2>
+                <div class="spike-viz">
+                    <canvas id="spikeChart"></canvas>
+                </div>
+                <div class="spike-stats">
+                    <div class="spike-stat">
+                        <div class="label">Left Spikes</div>
+                        <div id="leftSpikeCount" class="value">0</div>
                     </div>
-                    <div class="video-overlay">
-                        <div class="video-status">
-                            <div id="videoFPS" class="video-stat">
-                                FPS: <span id="videoFPSValue">0</span>
-                            </div>
-                            <div id="videoFrames" class="video-stat">
-                                Frames: <span id="videoFrameCount">0</span>
-                            </div>
-                        </div>
+                    <div class="spike-stat">
+                        <div class="label">Right Spikes</div>
+                        <div id="rightSpikeCount" class="value">0</div>
+                    </div>
+                    <div class="spike-stat">
+                        <div class="label">Both Spikes</div>
+                        <div id="bothSpikeCount" class="value">0</div>
                     </div>
                 </div>
             </div>
             
+            <!-- Probability Bars Panel -->
             <div class="panel">
-                <h2>Video Stats</h2>
-                <div class="status-grid">
-                    <div class="status-item">
-                        <div class="status-label">Stream Status</div>
-                        <div id="videoStreamStatus" class="status-value disconnected">Disconnected</div>
-                    </div>
-                    <div class="status-item">
-                        <div class="status-label">Current FPS</div>
-                        <div id="videoCurrentFPS" class="status-value">0</div>
-                    </div>
-                    <div class="status-item">
-                        <div class="status-label">Latency</div>
-                        <div id="videoLatency" class="status-value">0ms</div>
-                    </div>
-                </div>
-                
-                <div style="margin-top: 1rem;">
-                    <button class="btn" onclick="saveSnapshot()">
-                        📸 Save Snapshot
-                    </button>
-                </div>
-            </div>
-        </div>
-        
-        <!-- Debug Panel -->
-        <div class="debug-panel">
-            <h3 style="color: #ff6b00; margin-bottom: 0.5rem;">System Debug Info</h3>
-            <div class="debug-info">
-                <div>Drone State: <span id="debugDroneState">Unknown</span></div>
-                <div>Heading Control: <span id="debugHeadingControl">Inactive</span></div>
-                <div>Manual Override: <span id="debugManualOverride">OFF</span></div>
-                <div>Last State Change: <span id="debugLastStateChange">None</span></div>
-                <div>Video Stream: <span id="debugVideoStream">Inactive</span></div>
-            </div>
-        </div>
-        
-        <!-- Main prediction panels -->
-        <div class="main-grid">
-            <!-- 4-Class Model Panel -->
-            <div class="panel model-4class">
-                <h2>
-                    4-Class Control Model
-                    <span class="model-indicator">4-Class</span>
-                </h2>
-                <div class="predictions">
-                    <div class="prediction-bar">
-                        <div class="prediction-label">
+                <h2>4-Class Probabilities</h2>
+                <div class="prob-container">
+                    <div class="prob-bar">
+                        <div class="prob-label">
                             <span>Rest</span>
-                            <div class="prediction-info">
-                                <span id="4class_restProb">0.00</span>
-                                <span class="threshold-indicator">(≥0.50)</span>
-                            </div>
+                            <span id="restProb">0.00</span>
                         </div>
-                        <div class="prediction-track">
-                            <div id="4class_restBar" class="prediction-fill" style="width: 0%"></div>
-                            <div class="threshold-line" style="left: 50%"></div>
+                        <div class="prob-track">
+                            <div id="restBar" class="prob-fill" style="width: 0%"></div>
                         </div>
                     </div>
-                    <div class="prediction-bar">
-                        <div class="prediction-label">
-                            <span>Left Fist → Rotate Left</span>
-                            <div class="prediction-info">
-                                <span id="4class_leftProb">0.00</span>
-                                <span class="threshold-indicator">(≥0.30)</span>
-                            </div>
+                    
+                    <div class="prob-bar">
+                        <div class="prob-label">
+                            <span>Left Fist</span>
+                            <span id="leftProb">0.00</span>
                         </div>
-                        <div class="prediction-track">
-                            <div id="4class_leftBar" class="prediction-fill" style="width: 0%"></div>
-                            <div class="threshold-line" style="left: 30%"></div>
-                        </div>
-                    </div>
-                    <div class="prediction-bar">
-                        <div class="prediction-label">
-                            <span>Right Fist → Rotate Right</span>
-                            <div class="prediction-info">
-                                <span id="4class_rightProb">0.00</span>
-                                <span class="threshold-indicator">(≥0.30)</span>
-                            </div>
-                        </div>
-                        <div class="prediction-track">
-                            <div id="4class_rightBar" class="prediction-fill" style="width: 0%"></div>
-                            <div class="threshold-line" style="left: 30%"></div>
+                        <div class="prob-track">
+                            <div id="leftBar" class="prob-fill" style="width: 0%"></div>
+                            <div id="leftMean" class="mean-line" style="left: 0%"></div>
+                            <div id="leftThreshold" class="threshold-line" style="left: 0%"></div>
                         </div>
                     </div>
-                    <div class="prediction-bar">
-                        <div class="prediction-label">
-                            <span>Both Fists → Forward</span>
-                            <div class="prediction-info">
-                                <span id="4class_bothProb">0.00</span>
-                                <span class="threshold-indicator">(≥0.30)</span>
-                            </div>
+                    
+                    <div class="prob-bar">
+                        <div class="prob-label">
+                            <span>Right Fist</span>
+                            <span id="rightProb">0.00</span>
                         </div>
-                        <div class="prediction-track">
-                            <div id="4class_bothBar" class="prediction-fill" style="width: 0%"></div>
-                            <div class="threshold-line" style="left: 30%"></div>
+                        <div class="prob-track">
+                            <div id="rightBar" class="prob-fill" style="width: 0%"></div>
+                            <div id="rightMean" class="mean-line" style="left: 0%"></div>
+                            <div id="rightThreshold" class="threshold-line" style="left: 0%"></div>
+                        </div>
+                    </div>
+                    
+                    <div class="prob-bar">
+                        <div class="prob-label">
+                            <span>Both Fists</span>
+                            <span id="bothProb">0.00</span>
+                        </div>
+                        <div class="prob-track">
+                            <div id="bothBar" class="prob-fill" style="width: 0%"></div>
+                            <div id="bothMean" class="mean-line" style="left: 0%"></div>
+                            <div id="bothThreshold" class="threshold-line" style="left: 0%"></div>
                         </div>
                     </div>
                 </div>
                 
-                <!-- Heading Control Status -->
-                <div style="margin-top: 1rem; padding: 0.5rem; background: #0f0f0f; border-radius: 4px;">
-                    <div style="font-size: 0.9rem; color: #888;">Heading Control</div>
-                    <div style="display: flex; justify-content: space-between; margin-top: 0.5rem;">
-                        <span>Control Value: <span id="headingControlValue" style="color: #00ff41;">0.00</span></span>
-                        <span>Dead Zone: <span id="headingDeadZone" style="color: #666;">NO</span></span>
+                <h3 style="margin-top: 1.5rem; margin-bottom: 0.5rem; font-size: 1.1rem;">Push Command (8-Class)</h3>
+                <div class="prob-bar">
+                    <div class="prob-label">
+                        <span>Push → Takeoff/Land</span>
+                        <span id="pushProb">0.00</span>
                     </div>
-                </div>
-            </div>
-            
-            <!-- 8-Class Model Panel -->
-            <div class="panel model-8class">
-                <h2>
-                    Action Control Model
-                    <span class="model-indicator">8-Class</span>
-                </h2>
-                <div class="predictions">
-                    <div class="prediction-bar">
-                        <div class="prediction-label">
-                            <span>Push → Takeoff/Land</span>
-                            <div class="prediction-info">
-                                <span id="8class_pushProb">0.00</span>
-                                <span class="threshold-indicator">(≥0.60)</span>
-                            </div>
-                        </div>
-                        <div class="prediction-track">
-                            <div id="8class_pushBar" class="prediction-fill" style="width: 0%"></div>
-                            <div class="threshold-line" style="left: 60%"></div>
-                        </div>
+                    <div class="prob-track">
+                        <div id="pushBar" class="prob-fill" style="width: 0%"></div>
+                        <div class="threshold-line" style="left: 60%"></div>
                     </div>
                 </div>
                 
-                <!-- State Machine Visualization -->
-                <div class="state-diagram">
-                    <div id="stateGrounded" class="state-node">Grounded</div>
-                    <div class="state-transition">→</div>
-                    <div id="stateTakingOff" class="state-node">Taking Off</div>
-                    <div class="state-transition">→</div>
-                    <div id="stateFlying" class="state-node">Flying</div>
-                    <div class="state-transition">→</div>
-                    <div id="stateLanding" class="state-node">Landing</div>
+                <!-- Push Command Status -->
+                <div style="margin-top: 0.5rem; padding: 0.5rem; background: rgba(255, 255, 255, 0.05); border-radius: 4px; font-size: 0.85rem;">
+                    <div style="display: flex; justify-content: space-between;">
+                        <span>Push Status:</span>
+                        <span id="pushStatus" style="color: #888;">Ready</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; margin-top: 0.25rem;">
+                        <span>Cooldown:</span>
+                        <span id="pushCooldown" style="color: #888;">0.0s</span>
+                    </div>
                 </div>
             </div>
         </div>
         
-        <!-- Status and Controls -->
-        <div class="bottom-grid">
+        <div class="grid">
+            <!-- Control Output Panel -->
             <div class="panel">
-                <h2>System Status</h2>
-                <div class="status-grid">
-                    <div class="status-item">
-                        <div class="status-label">Neurosity</div>
-                        <div id="neurosityStatus" class="status-value disconnected">Disconnected</div>
+                <h2>Control Output</h2>
+                <div class="control-viz">
+                    <div class="control-meter">
+                        <div class="label">Rotation Velocity</div>
+                        <div id="rotationValue" class="value">0.00</div>
+                        <div class="bar">
+                            <div id="rotationBar" class="bar-fill" style="width: 50%"></div>
+                        </div>
                     </div>
-                    <div class="status-item">
-                        <div class="status-label">Models</div>
-                        <div id="modelStatus" class="status-value disconnected">Not Loaded</div>
-                    </div>
-                    <div class="status-item">
-                        <div class="status-label">Drone State</div>
-                        <div id="droneState" class="status-value">Grounded</div>
+                    <div class="control-meter">
+                        <div class="label">Forward Velocity</div>
+                        <div id="forwardValue" class="value">0.00</div>
+                        <div class="bar">
+                            <div id="forwardBar" class="bar-fill" style="width: 0%"></div>
+                        </div>
                     </div>
                 </div>
                 
-                <!-- Manual Override Toggle -->
-                <div class="override-toggle">
-                    <span>Manual Override (Test Rotation Without Flying):</span>
+                <div class="toggle-container">
+                    <span>Manual Override (Test without flying):</span>
                     <div id="overrideToggle" class="toggle-switch" onclick="toggleManualOverride()">
                         <div class="toggle-slider"></div>
                     </div>
-                    <span id="overrideStatus" style="color: #666;">OFF</span>
-                </div>
-                
-                <h3 style="margin-top: 1.5rem; margin-bottom: 1rem; font-size: 1.1rem; color: #00ff41;">
-                    Manual Controls
-                </h3>
-                <div class="drone-controls">
-                    <button id="takeoffBtn" class="btn primary" onclick="sendManualCommand('takeoff')">
-                        Takeoff
-                    </button>
-                    <button id="landBtn" class="btn danger" onclick="sendManualCommand('land')">
-                        Land
-                    </button>
-                    <button class="btn danger" onclick="sendManualCommand('emergency')">
-                        Emergency
-                    </button>
-                    <button class="btn" onclick="sendManualCommand('rotate_left')">
-                        ← Left
-                    </button>
-                    <button class="btn" onclick="sendManualCommand('status')">
-                        Status
-                    </button>
-                    <button class="btn" onclick="sendManualCommand('rotate_right')">
-                        Right →
-                    </button>
-                    <button class="btn warning" onclick="simulateCompletion('takeoff')">
-                        Simulate Takeoff Done
-                    </button>
-                    <button class="btn warning" onclick="simulateCompletion('land')">
-                        Simulate Land Done
-                    </button>
-                    <button class="btn" onclick="resetHeadingController()">
-                        Reset Heading
-                    </button>
+                    <span id="overrideStatus">OFF</span>
                 </div>
             </div>
             
+            <!-- Status & Controls Panel -->
             <div class="panel">
-                <h2>Command History</h2>
-                <div id="commandHistory" class="command-history">
-                    <div class="history-entry">
-                        <span>Waiting for commands...</span>
+                <h2>Drone Status & Controls</h2>
+                <div id="droneStateDiv" class="drone-state grounded">
+                    <div class="state-label">Drone State</div>
+                    <div id="droneState" class="state-value">GROUNDED</div>
+                </div>
+                
+                <div class="status-grid">
+                    <div class="status-item">
+                        <div class="label">Data Packets</div>
+                        <div id="dataCount" class="value">0</div>
                     </div>
+                    <div class="status-item">
+                        <div class="label">Models</div>
+                        <div id="modelStatus" class="value">Not Loaded</div>
+                    </div>
+                    <div class="status-item">
+                        <div class="label">Spike Detection</div>
+                        <div id="spikeStatus" class="value">Disabled</div>
+                    </div>
+                    <div class="status-item">
+                        <div class="label">Active Spikes</div>
+                        <div id="activeSpikeCount" class="value">0</div>
+                    </div>
+                </div>
+                
+                <div class="controls">
+                    <button id="takeoffBtn" class="btn primary" onclick="sendCommand('takeoff')">
+                        Takeoff
+                    </button>
+                    <button id="landBtn" class="btn danger" onclick="sendCommand('land')">
+                        Land
+                    </button>
+                    <button class="btn" onclick="sendCommand('emergency')">
+                        Emergency
+                    </button>
                 </div>
             </div>
         </div>
@@ -779,451 +554,338 @@
     
     <script>
         // WebSocket connection
-        let socket = null;
+        const socket = io();
+        
+        // State tracking
         let droneState = 'grounded';
         let manualOverride = false;
-        
-        // Video state
-        let videoActive = false;
-        let lastVideoFrame = 0;
-        let videoFPSCounter = 0;
-        let videoFPSTimer = null;
-        
-        // DOM elements
-        const elements = {
-            mainIndicator: document.getElementById('mainConnectionIndicator'),
-            neurosityStatus: document.getElementById('neurosityStatus'),
-            modelStatus: document.getElementById('modelStatus'),
-            droneState: document.getElementById('droneState'),
-            commandHistory: document.getElementById('commandHistory'),
-            takeoffBtn: document.getElementById('takeoffBtn'),
-            landBtn: document.getElementById('landBtn'),
-            
-            // Video elements
-            videoDisplay: document.getElementById('videoDisplay'),
-            noVideoMessage: document.getElementById('noVideoMessage'),
-            videoStatusText: document.getElementById('videoStatusText'),
-            videoStreamStatus: document.getElementById('videoStreamStatus'),
-            videoFPSValue: document.getElementById('videoFPSValue'),
-            videoCurrentFPS: document.getElementById('videoCurrentFPS'),
-            videoFrameCount: document.getElementById('videoFrameCount'),
-            videoLatency: document.getElementById('videoLatency'),
-            debugVideoStream: document.getElementById('debugVideoStream'),
-            
-            // Debug elements
-            debugDroneState: document.getElementById('debugDroneState'),
-            debugHeadingControl: document.getElementById('debugHeadingControl'),
-            debugManualOverride: document.getElementById('debugManualOverride'),
-            debugLastStateChange: document.getElementById('debugLastStateChange'),
-            
-            // State nodes
-            stateGrounded: document.getElementById('stateGrounded'),
-            stateTakingOff: document.getElementById('stateTakingOff'),
-            stateFlying: document.getElementById('stateFlying'),
-            stateLanding: document.getElementById('stateLanding'),
-            
-            // Heading control
-            headingControlValue: document.getElementById('headingControlValue'),
-            headingDeadZone: document.getElementById('headingDeadZone'),
-            
-            // Override
-            overrideToggle: document.getElementById('overrideToggle'),
-            overrideStatus: document.getElementById('overrideStatus'),
-            
-            // 4-class elements
-            '4class_restProb': document.getElementById('4class_restProb'),
-            '4class_leftProb': document.getElementById('4class_leftProb'),
-            '4class_rightProb': document.getElementById('4class_rightProb'),
-            '4class_bothProb': document.getElementById('4class_bothProb'),
-            '4class_restBar': document.getElementById('4class_restBar'),
-            '4class_leftBar': document.getElementById('4class_leftBar'),
-            '4class_rightBar': document.getElementById('4class_rightBar'),
-            '4class_bothBar': document.getElementById('4class_bothBar'),
-            
-            // 8-class elements
-            '8class_pushProb': document.getElementById('8class_pushProb'),
-            '8class_pushBar': document.getElementById('8class_pushBar')
+        let spikeHistory = {
+            left: [],
+            right: [],
+            both: []
         };
         
-        // Updated thresholds from config
-        const thresholds = {
-            'Rest': 0.50,
-            'Left_Fist': 0.30,
-            'Right_Fist': 0.30,
-            'Both_Fists': 0.30,
-            'Push': 0.60,
-        };
-        
-        // Connect to WebSocket
-        function connectWebSocket() {
-            socket = io(window.location.origin);
-            
-            socket.on('connect', () => {
-                console.log('Connected to server');
-                elements.mainIndicator.classList.add('connected');
-                elements.mainIndicator.classList.remove('disconnected');
-                socket.emit('request_status');
-                startFPSCounter();
-            });
-            
-            socket.on('disconnect', () => {
-                console.log('Disconnected from server');
-                elements.mainIndicator.classList.remove('connected');
-                elements.mainIndicator.classList.add('disconnected');
-                updateStatus('disconnected');
-                stopFPSCounter();
-            });
-            
-            socket.on('connection_status', updateConnectionStatus);
-            socket.on('system_status', updateSystemStatus);
-            socket.on('dual_predictions', updateDualPredictions);
-            socket.on('system_update', updateSystemInfo);
-            socket.on('drone_command_sent', (data) => {
-                addCommandToHistory(data);
-            });
-            socket.on('manual_override_status', (data) => {
-                manualOverride = data.active;
-                updateManualOverrideDisplay();
-            });
-            socket.on('video_frame', handleVideoFrame);
-        }
-        
-        function handleVideoFrame(data) {
-            if (!data || !data.frame) return;
-            
-            // Update video display
-            const imageUrl = 'data:image/jpeg;base64,' + data.frame;
-            elements.videoDisplay.src = imageUrl;
-            elements.videoDisplay.style.display = 'block';
-            elements.noVideoMessage.style.display = 'none';
-            
-            // Update stats
-            videoActive = true;
-            lastVideoFrame = Date.now();
-            videoFPSCounter++;
-            
-            if (data.frame_count) {
-                elements.videoFrameCount.textContent = data.frame_count;
+        // Chart setup
+        const ctx = document.getElementById('spikeChart').getContext('2d');
+        const spikeChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [
+                    {
+                        label: 'Left Fist',
+                        data: [],
+                        borderColor: '#ff6b6b',
+                        backgroundColor: 'rgba(255, 107, 107, 0.1)',
+                        tension: 0.1
+                    },
+                    {
+                        label: 'Right Fist',
+                        data: [],
+                        borderColor: '#4ecdc4',
+                        backgroundColor: 'rgba(78, 205, 196, 0.1)',
+                        tension: 0.1
+                    },
+                    {
+                        label: 'Both Fists',
+                        data: [],
+                        borderColor: '#ffe66d',
+                        backgroundColor: 'rgba(255, 230, 109, 0.1)',
+                        tension: 0.1
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        max: 1.0,
+                        grid: {
+                            color: 'rgba(255, 255, 255, 0.1)'
+                        }
+                    },
+                    x: {
+                        grid: {
+                            color: 'rgba(255, 255, 255, 0.1)'
+                        }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        display: true,
+                        position: 'top'
+                    }
+                }
             }
-            
-            if (data.fps) {
-                elements.videoFPSValue.textContent = data.fps.toFixed(1);
-            }
-            
-            // Calculate latency
-            if (data.timestamp) {
-                const latency = Date.now() - data.timestamp;
-                elements.videoLatency.textContent = latency + 'ms';
-            }
-            
-            updateVideoStatus(true);
-        }
+        });
         
-        function updateVideoStatus(active) {
-            if (active) {
-                elements.videoStatusText.textContent = 'Video: Connected';
-                elements.videoStreamStatus.textContent = 'Connected';
-                elements.videoStreamStatus.classList.add('connected');
-                elements.videoStreamStatus.classList.remove('disconnected');
-                elements.debugVideoStream.textContent = 'Active';
-                elements.debugVideoStream.style.color = '#00ff41';
+        // Socket event handlers
+        socket.on('connect', () => {
+            console.log('Connected to server');
+            document.getElementById('connectionStatus').textContent = 'Connected';
+            document.getElementById('statusDot').classList.add('connected');
+        });
+        
+        socket.on('disconnect', () => {
+            console.log('Disconnected from server');
+            document.getElementById('connectionStatus').textContent = 'Disconnected';
+            document.getElementById('statusDot').classList.remove('connected');
+        });
+        
+        socket.on('system_status', (data) => {
+            updateSystemStatus(data);
+        });
+        
+        socket.on('dual_predictions', (data) => {
+            updatePredictions(data);
+        });
+        
+        socket.on('manual_override_status', (data) => {
+            updateManualOverride(data.active);
+        });
+        
+        function updateSystemStatus(status) {
+            // Update connection status
+            if (status.data_flowing) {
+                document.getElementById('dataStatus').textContent = 'Data Flowing';
             } else {
-                elements.videoStatusText.textContent = 'Video: Disconnected';
-                elements.videoStreamStatus.textContent = 'Disconnected';
-                elements.videoStreamStatus.classList.remove('connected');
-                elements.videoStreamStatus.classList.add('disconnected');
-                elements.debugVideoStream.textContent = 'Inactive';
-                elements.debugVideoStream.style.color = '#666';
-                elements.videoDisplay.style.display = 'none';
-                elements.noVideoMessage.style.display = 'block';
+                document.getElementById('dataStatus').textContent = 'No Data';
             }
-        }
-        
-        function startFPSCounter() {
-            videoFPSTimer = setInterval(() => {
-                elements.videoCurrentFPS.textContent = videoFPSCounter;
-                videoFPSCounter = 0;
+            
+            // Update data count
+            document.getElementById('dataCount').textContent = status.data_count || 0;
+            
+            // Update model status
+            if (status.model_info) {
+                const loaded = Object.values(status.model_info).filter(m => m.loaded).length;
+                document.getElementById('modelStatus').textContent = `${loaded} Loaded`;
+            }
+            
+            // Update drone state
+            if (status.mapper_state) {
+                updateDroneState(status.mapper_state.drone_state);
+            }
+            
+            // Update push command status
+            if (status.push_state) {
+                const ps = status.push_state;
+                let statusText = 'Ready';
+                let statusColor = '#00ff88';
                 
-                // Check if video is stale
-                if (videoActive && (Date.now() - lastVideoFrame) > 2000) {
-                    videoActive = false;
-                    updateVideoStatus(false);
+                if (ps.in_progress) {
+                    statusText = 'In Progress';
+                    statusColor = '#ffaa00';
+                } else if (!ps.was_released) {
+                    statusText = 'Waiting for Release';
+                    statusColor = '#ff6b6b';
+                } else if (ps.cooldown_remaining > 0) {
+                    statusText = 'Cooldown';
+                    statusColor = '#ffaa00';
+                } else if (ps.lockout_remaining > 0) {
+                    statusText = 'State Lockout';
+                    statusColor = '#ff6b6b';
                 }
-            }, 1000);
-        }
-        
-        function stopFPSCounter() {
-            if (videoFPSTimer) {
-                clearInterval(videoFPSTimer);
-                videoFPSTimer = null;
-            }
-        }
-        
-        function saveSnapshot() {
-            if (!elements.videoDisplay.src) {
-                alert('No video to capture');
-                return;
-            }
-            
-            // Create a link to download the image
-            const link = document.createElement('a');
-            link.download = 'drone_snapshot_' + new Date().toISOString() + '.jpg';
-            link.href = elements.videoDisplay.src;
-            link.click();
-        }
-        
-        function updateConnectionStatus(data) {
-            updateStatusElement(elements.neurosityStatus, data.neurosity ? 'Connected' : 'Disconnected', data.neurosity);
-            
-            if (data.models_loaded && data.model_info) {
-                const loadedCount = Object.values(data.model_info).filter(m => m.loaded).length;
-                updateStatusElement(elements.modelStatus, `${loadedCount} Models`, loadedCount > 0);
-            }
-            
-            if (data.mapper_state) {
-                droneState = data.mapper_state.drone_state;
-                updateDroneState();
-            }
-        }
-        
-        function updateSystemStatus(data) {
-            updateStatusElement(elements.neurosityStatus, 
-                data.neurosity_connected ? 'Connected' : 'Disconnected', 
-                data.neurosity_connected);
-            
-            if (data.model_info) {
-                const loadedCount = Object.values(data.model_info).filter(m => m.loaded).length;
-                updateStatusElement(elements.modelStatus, `${loadedCount} Models`, loadedCount > 0);
-            }
-            
-            if (data.mapper_state) {
-                droneState = data.mapper_state.drone_state;
-                updateDroneState();
                 
-                // Update heading control info
-                if (data.mapper_state.heading_control) {
-                    const hc = data.mapper_state.heading_control;
-                    elements.headingControlValue.textContent = hc.smoothed_value.toFixed(3);
-                    elements.headingDeadZone.textContent = hc.in_dead_zone ? 'YES' : 'NO';
-                    elements.headingDeadZone.style.color = hc.in_dead_zone ? '#666' : '#00ff41';
-                    
-                    elements.debugHeadingControl.textContent = hc.enabled ? 'Active' : 'Disabled';
-                    elements.debugHeadingControl.style.color = hc.enabled ? '#00ff41' : '#666';
+                document.getElementById('pushStatus').textContent = statusText;
+                document.getElementById('pushStatus').style.color = statusColor;
+                
+                const cooldownTime = Math.max(ps.cooldown_remaining, ps.lockout_remaining);
+                document.getElementById('pushCooldown').textContent = cooldownTime.toFixed(1) + 's';
+                
+                // Update push bar color based on state
+                const pushBar = document.getElementById('pushBar');
+                if (ps.in_progress || !ps.was_released) {
+                    pushBar.style.background = statusColor;
+                } else {
+                    pushBar.style.background = '';  // Reset to default
                 }
             }
             
-            // Update video stats if available
-            if (data.video_stats) {
-                if (data.video_stats.frames_received > 0) {
-                    elements.debugVideoStream.textContent = 'Receiving';
-                    elements.debugVideoStream.style.color = '#00ff41';
-                }
-            }
-            
-            // Update manual override status
-            if (data.manual_override !== undefined) {
-                manualOverride = data.manual_override;
-                updateManualOverrideDisplay();
+            // Update triadic controller state
+            if (status.triadic_state) {
+                updateTriadicState(status.triadic_state);
             }
         }
         
-        function updateDualPredictions(data) {
+        function updatePredictions(data) {
+            // Update 4-class predictions
             if (data['4_class']) {
-                update4ClassPredictions(data['4_class']);
-            }
-            if (data['8_class']) {
-                update8ClassPredictions(data['8_class']);
-            }
-        }
-        
-        function update4ClassPredictions(prediction) {
-            const probs = prediction.probabilities || {};
-            
-            elements['4class_restProb'].textContent = (probs.Rest || 0).toFixed(2);
-            elements['4class_leftProb'].textContent = (probs.Left_Fist || 0).toFixed(2);
-            elements['4class_rightProb'].textContent = (probs.Right_Fist || 0).toFixed(2);
-            elements['4class_bothProb'].textContent = (probs.Both_Fists || 0).toFixed(2);
-            
-            updatePredictionBar('4class_restBar', probs.Rest, prediction.predicted_class === 'Rest', probs.Rest >= thresholds.Rest);
-            updatePredictionBar('4class_leftBar', probs.Left_Fist, prediction.predicted_class === 'Left_Fist', probs.Left_Fist >= thresholds.Left_Fist);
-            updatePredictionBar('4class_rightBar', probs.Right_Fist, prediction.predicted_class === 'Right_Fist', probs.Right_Fist >= thresholds.Right_Fist);
-            updatePredictionBar('4class_bothBar', probs.Both_Fists, prediction.predicted_class === 'Both_Fists', probs.Both_Fists >= thresholds.Both_Fists);
-        }
-        
-        function update8ClassPredictions(prediction) {
-            const probs = prediction.probabilities || {};
-            elements['8class_pushProb'].textContent = (probs.Push || 0).toFixed(2);
-            updatePredictionBar('8class_pushBar', probs.Push || 0, prediction.predicted_class === 'Push', probs.Push >= thresholds.Push);
-        }
-        
-        function updatePredictionBar(barId, probability, isActive, meetsThreshold) {
-            const bar = elements[barId];
-            if (!bar) return;
-            
-            probability = probability || 0;
-            bar.style.width = `${probability * 100}%`;
-            bar.classList.toggle('active', isActive && meetsThreshold);
-            bar.classList.toggle('below-threshold', probability > 0.05 && !meetsThreshold);
-        }
-        
-        function updateSystemInfo(data) {
-            if (data.mapper_state) {
-                droneState = data.mapper_state.drone_state;
-                updateDroneState();
+                const pred = data['4_class'];
+                const probs = pred.probabilities || {};
                 
-                if (data.mapper_state.heading_control) {
-                    const hc = data.mapper_state.heading_control;
-                    elements.headingControlValue.textContent = hc.smoothed_value.toFixed(3);
-                    elements.headingDeadZone.textContent = hc.in_dead_zone ? 'YES' : 'NO';
-                    elements.headingDeadZone.style.color = hc.in_dead_zone ? '#666' : '#00ff41';
-                }
+                updateProbabilityBar('rest', probs.Rest || 0);
+                updateProbabilityBar('left', probs.Left_Fist || 0);
+                updateProbabilityBar('right', probs.Right_Fist || 0);
+                updateProbabilityBar('both', probs.Both_Fists || 0);
+                
+                // Update chart
+                updateSpikeChart(probs);
             }
             
-            // Handle command completion
-            if (data.command_completion) {
-                const comp = data.command_completion;
-                elements.debugLastStateChange.textContent = `${comp.command} completed (${comp.success ? 'success' : 'failed'})`;
-                elements.debugLastStateChange.style.color = comp.success ? '#00ff41' : '#ff4141';
+            // Update 8-class push probability
+            if (data['8_class']) {
+                const pred = data['8_class'];
+                const probs = pred.probabilities || {};
+                updateProbabilityBar('push', probs.Push || 0);
             }
         }
         
-        function updateDroneState() {
-            elements.droneState.textContent = droneState.charAt(0).toUpperCase() + droneState.slice(1);
-            elements.droneState.className = 'status-value';
+        function updateProbabilityBar(name, value) {
+            const probElement = document.getElementById(`${name}Prob`);
+            const barElement = document.getElementById(`${name}Bar`);
             
-            // Update debug display
-            elements.debugDroneState.textContent = droneState;
-            elements.debugDroneState.style.color = droneState === 'flying' ? '#00ff41' : '#ffaa00';
+            if (probElement) probElement.textContent = value.toFixed(3);
+            if (barElement) barElement.style.width = `${value * 100}%`;
+        }
+        
+        function updateTriadicState(state) {
+            // Update spike detection status
+            if (state.spike_detection) {
+                const sd = state.spike_detection;
+                document.getElementById('spikeStatus').textContent = sd.enabled ? 'Enabled' : 'Disabled';
+                
+                // Update spike counts
+                if (sd.spike_counts) {
+                    document.getElementById('leftSpikeCount').textContent = sd.spike_counts.Left_Fist || 0;
+                    document.getElementById('rightSpikeCount').textContent = sd.spike_counts.Right_Fist || 0;
+                    document.getElementById('bothSpikeCount').textContent = sd.spike_counts.Both_Fists || 0;
+                }
+                
+                // Update active spike count
+                const totalActive = Object.values(sd.active_spikes || {}).reduce((a, b) => a + b, 0);
+                document.getElementById('activeSpikeCount').textContent = totalActive;
+                
+                // Update mean and threshold lines
+                if (sd.statistics) {
+                    updateStatisticsDisplay(sd.statistics);
+                }
+                
+                // Check for spike activation
+                updateSpikeActivation(sd.active_spikes);
+            }
             
-            // Update state diagram
-            const states = ['Grounded', 'TakingOff', 'Flying', 'Landing'];
-            states.forEach(state => {
-                const element = elements[`state${state}`];
-                if (element) {
-                    const isActive = droneState.toLowerCase().replace('_', '') === state.toLowerCase();
-                    element.classList.toggle('active', isActive);
+            // Update control outputs
+            updateControlDisplay(state.rotation_velocity || 0, state.forward_velocity || 0);
+        }
+        
+        function updateStatisticsDisplay(stats) {
+            ['left', 'right', 'both'].forEach(name => {
+                const key = name === 'left' ? 'Left_Fist' : 
+                           name === 'right' ? 'Right_Fist' : 'Both_Fists';
+                
+                if (stats[key]) {
+                    const stat = stats[key];
+                    const meanLine = document.getElementById(`${name}Mean`);
+                    const thresholdLine = document.getElementById(`${name}Threshold`);
+                    
+                    if (meanLine) {
+                        meanLine.style.left = `${stat.mean * 100}%`;
+                    }
+                    
+                    if (thresholdLine && stat.std > 0) {
+                        const threshold = stat.mean + 1.5 * stat.std; // spike threshold
+                        thresholdLine.style.left = `${Math.min(threshold * 100, 100)}%`;
+                    }
                 }
             });
-            
-            if (droneState === 'flying') {
-                elements.droneState.classList.add('connected');
-            } else if (droneState === 'grounded') {
-                elements.droneState.classList.add('warning');
-            } else {
-                elements.droneState.classList.add('warning');
-            }
-            
-            elements.takeoffBtn.disabled = droneState !== 'grounded';
-            elements.landBtn.disabled = droneState !== 'flying';
         }
         
-        function updateStatusElement(element, text, isConnected) {
-            element.textContent = text;
-            element.classList.toggle('connected', isConnected);
-            element.classList.toggle('disconnected', !isConnected);
-        }
-        
-        function addCommandToHistory(data) {
-            const time = new Date().toLocaleTimeString();
-            const entry = document.createElement('div');
-            entry.className = 'history-entry';
-            
-            let commandDisplay = data.command.toUpperCase();
-            if (data.degrees) {
-                commandDisplay += ` ${data.degrees}°`;
-            }
-            
-            entry.innerHTML = `
-                <span>
-                    <span class="history-time">${time}</span>
-                    <span class="history-command">${commandDisplay}</span>
-                    <span class="history-source">(${data.source_model}/${data.source_class})</span>
-                </span>
-                <span>${data.confidence ? data.confidence.toFixed(2) : ''}</span>
-            `;
-            
-            if (elements.commandHistory.firstChild.textContent.includes('Waiting')) {
-                elements.commandHistory.innerHTML = '';
-            }
-            elements.commandHistory.insertBefore(entry, elements.commandHistory.firstChild);
-            
-            while (elements.commandHistory.children.length > 20) {
-                elements.commandHistory.removeChild(elements.commandHistory.lastChild);
-            }
-        }
-        
-        async function sendManualCommand(command) {
-            try {
-                const response = await fetch('/send_command', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({ command })
-                });
-                const result = await response.json();
-                if (!result.success) console.error('Failed to send command:', result.error);
-            } catch (error) {
-                console.error('Error sending command:', error);
-            }
-        }
-        
-        async function simulateCompletion(command) {
-            try {
-                const response = await fetch('/update_drone_state', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({ command, success: true })
-                });
-                const result = await response.json();
-                console.log('Simulated completion:', result);
-            } catch (error) {
-                console.error('Error simulating completion:', error);
-            }
-        }
-        
-        async function toggleManualOverride() {
-            try {
-                const response = await fetch('/toggle_manual_override', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({})
-                });
-                const result = await response.json();
-                if (result.success) {
-                    manualOverride = result.manual_override;
-                    updateManualOverrideDisplay();
+        function updateSpikeActivation(activeSpikes) {
+            ['left', 'right', 'both'].forEach(name => {
+                const key = name === 'left' ? 'Left_Fist' : 
+                           name === 'right' ? 'Right_Fist' : 'Both_Fists';
+                const bar = document.getElementById(`${name}Bar`);
+                
+                if (bar) {
+                    if (activeSpikes[key] > 0) {
+                        bar.classList.add('spike-active');
+                    } else {
+                        bar.classList.remove('spike-active');
+                    }
                 }
-            } catch (error) {
-                console.error('Error toggling manual override:', error);
+            });
+        }
+        
+        function updateControlDisplay(rotation, forward) {
+            // Update rotation
+            document.getElementById('rotationValue').textContent = rotation.toFixed(2);
+            const rotBar = document.getElementById('rotationBar');
+            const rotPercent = (rotation + 1) * 50; // Convert -1 to 1 range to 0-100%
+            rotBar.style.width = `${rotPercent}%`;
+            
+            // Update forward
+            document.getElementById('forwardValue').textContent = forward.toFixed(2);
+            const fwdBar = document.getElementById('forwardBar');
+            fwdBar.style.width = `${Math.abs(forward) * 100}%`;
+        }
+        
+        function updateSpikeChart(probs) {
+            // Add new data point
+            const timestamp = new Date().toLocaleTimeString();
+            
+            // Keep only last 50 points
+            if (spikeChart.data.labels.length > 50) {
+                spikeChart.data.labels.shift();
+                spikeChart.data.datasets.forEach(dataset => dataset.data.shift());
+            }
+            
+            spikeChart.data.labels.push(timestamp);
+            spikeChart.data.datasets[0].data.push(probs.Left_Fist || 0);
+            spikeChart.data.datasets[1].data.push(probs.Right_Fist || 0);
+            spikeChart.data.datasets[2].data.push(probs.Both_Fists || 0);
+            
+            spikeChart.update('none'); // Update without animation
+        }
+        
+        function updateDroneState(state) {
+            droneState = state;
+            const stateDiv = document.getElementById('droneStateDiv');
+            const stateText = document.getElementById('droneState');
+            
+            stateDiv.className = `drone-state ${state}`;
+            stateText.textContent = state.toUpperCase().replace('_', ' ');
+            
+            // Update button states
+            document.getElementById('takeoffBtn').disabled = state !== 'grounded';
+            document.getElementById('landBtn').disabled = state !== 'flying';
+        }
+        
+        function updateManualOverride(active) {
+            manualOverride = active;
+            const toggle = document.getElementById('overrideToggle');
+            const status = document.getElementById('overrideStatus');
+            
+            if (active) {
+                toggle.classList.add('active');
+                status.textContent = 'ON';
+            } else {
+                toggle.classList.remove('active');
+                status.textContent = 'OFF';
             }
         }
         
-        function updateManualOverrideDisplay() {
-            elements.overrideToggle.classList.toggle('active', manualOverride);
-            elements.overrideStatus.textContent = manualOverride ? 'ON' : 'OFF';
-            elements.overrideStatus.style.color = manualOverride ? '#ff6b00' : '#666';
-            elements.debugManualOverride.textContent = manualOverride ? 'ON' : 'OFF';
-            elements.debugManualOverride.style.color = manualOverride ? '#ff6b00' : '#666';
+        function sendCommand(command) {
+            fetch('/send_command', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({command: command})
+            });
         }
         
-        function resetHeadingController() {
-            // This would need to be implemented on the backend
-            console.log('Reset heading controller requested');
+        function toggleManualOverride() {
+            fetch('/toggle_manual_override', {
+                method: 'POST'
+            });
         }
         
-        function updateStatus(status) {
-            if (status === 'disconnected') {
-                updateStatusElement(elements.neurosityStatus, 'Disconnected', false);
-                updateStatusElement(elements.modelStatus, 'Not Loaded', false);
-                updateVideoStatus(false);
-            }
-        }
+        // Request initial status
+        socket.emit('request_status');
         
-        connectWebSocket();
-        
+        // Periodic status updates
         setInterval(() => {
-            if (socket && socket.connected) {
-                socket.emit('request_status');
-            }
+            socket.emit('request_status');
         }, 5000);
     </script>
 </body>
